@@ -1,3 +1,90 @@
 spring:
   application:
     name: sumajflow
+
+  # ===============================
+  # DATABASE CONFIGURATION
+  # ===============================
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flow
+    username: postgres
+    password: 12345678
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  # ===============================
+  # JPA / HIBERNATE
+  # ===============================
+  jpa:
+    database-platform: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+    hibernate:
+      ddl-auto: validate  # NO cambiar a 'update' o 'create'
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true
+          time_zone: UTC
+        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+
+  # ===============================
+  # SPRING DATA REST
+  # ===============================
+  data:
+    rest:
+      base-path: /api
+      default-page-size: 20
+      max-page-size: 100
+      return-body-on-create: true
+      return-body-on-update: true
+      detection-strategy: annotated
+
+  # ===============================
+  # JACKSON (JSON)
+  # ===============================
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+# ===============================
+# LOGGING
+# ===============================
+logging:
+  level:
+    root: INFO
+    ucb.edu.bo.sumajflow: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# ===============================
+# SERVER
+# ===============================
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: on_param
+    include-exception: false
+
+# ===============================
+# MANAGEMENT (Actuator - opcional)
+# ===============================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized

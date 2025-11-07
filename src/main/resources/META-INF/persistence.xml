@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence version="2.2" xmlns="http://xmlns.jcp.org/xml/ns/persistence" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/persistence           http://xmlns.jcp.org/xml/ns/persistence/persistence_2_2.xsd">
+  <persistence-unit name="ucb.edu.bo_sumajflow_jar_0.0.1-SNAPSHOTPU" transaction-type="RESOURCE_LOCAL">
+    <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
+    <class>ucb.edu.bo.sumajflow.entity.Sectores</class>
+    <class>ucb.edu.bo.sumajflow.entity.Pesajes</class>
+    <class>ucb.edu.bo.sumajflow.entity.Auditoria</class>
+    <class>ucb.edu.bo.sumajflow.entity.Minas</class>
+    <class>ucb.edu.bo.sumajflow.entity.Lotes</class>
+    <class>ucb.edu.bo.sumajflow.entity.Usuarios</class>
+    <class>ucb.edu.bo.sumajflow.entity.BalanzaIngenio</class>
+    <class>ucb.edu.bo.sumajflow.entity.LoteMinerales</class>
+    <class>ucb.edu.bo.sumajflow.entity.Socio</class>
+    <class>ucb.edu.bo.sumajflow.entity.CooperativaSocio</class>
+    <class>ucb.edu.bo.sumajflow.entity.LoteComercializadora</class>
+    <class>ucb.edu.bo.sumajflow.entity.AlmacenIngenio</class>
+    <class>ucb.edu.bo.sumajflow.entity.IngenioMinero</class>
+    <class>ucb.edu.bo.sumajflow.entity.ProcesosPlanta</class>
+    <class>ucb.edu.bo.sumajflow.entity.Persona</class>
+    <class>ucb.edu.bo.sumajflow.entity.AsignacionCamion</class>
+    <class>ucb.edu.bo.sumajflow.entity.TipoUsuario</class>
+    <class>ucb.edu.bo.sumajflow.entity.Minerales</class>
+    <class>ucb.edu.bo.sumajflow.entity.BalanzaCooperativa</class>
+    <class>ucb.edu.bo.sumajflow.entity.ReporteQuimico</class>
+    <class>ucb.edu.bo.sumajflow.entity.LiquidacionDeduccion</class>
+    <class>ucb.edu.bo.sumajflow.entity.SectoresCoordenadas</class>
+    <class>ucb.edu.bo.sumajflow.entity.AlmacenCooperativa</class>
+    <class>ucb.edu.bo.sumajflow.entity.Comercializadora</class>
+    <class>ucb.edu.bo.sumajflow.entity.Planta</class>
+    <class>ucb.edu.bo.sumajflow.entity.AlmacenComercializadora</class>
+    <class>ucb.edu.bo.sumajflow.entity.Cooperativa</class>
+    <class>ucb.edu.bo.sumajflow.entity.Procesos</class>
+    <class>ucb.edu.bo.sumajflow.entity.LiquidacionCotizacion</class>
+    <class>ucb.edu.bo.sumajflow.entity.Transportista</class>
+    <class>ucb.edu.bo.sumajflow.entity.PlantaMinerales</class>
+    <class>ucb.edu.bo.sumajflow.entity.Concentrado</class>
+    <class>ucb.edu.bo.sumajflow.entity.BalanzaComercializadora</class>
+    <class>ucb.edu.bo.sumajflow.entity.LoteIngenio</class>
+    <class>ucb.edu.bo.sumajflow.entity.Liquidacion</class>
+    <properties>
+      <property name="javax.persistence.jdbc.url" value="jdbc:postgresql://localhost:5432/flow"/>
+      <property name="javax.persistence.jdbc.user" value="postgres"/>
+      <property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver"/>
+      <property name="javax.persistence.jdbc.password" value="12345678"/>
+    </properties>
+  </persistence-unit>
+</persistence>
