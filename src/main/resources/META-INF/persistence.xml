@@ -24,7 +24,6 @@
     <class>ucb.edu.bo.sumajflow.entity.ReporteQuimico</class>
     <class>ucb.edu.bo.sumajflow.entity.LiquidacionDeduccion</class>
     <class>ucb.edu.bo.sumajflow.entity.SectoresCoordenadas</class>
-    <class>ucb.edu.bo.sumajflow.entity.AlmacenCooperativa</class>
     <class>ucb.edu.bo.sumajflow.entity.Comercializadora</class>
     <class>ucb.edu.bo.sumajflow.entity.Planta</class>
     <class>ucb.edu.bo.sumajflow.entity.AlmacenComercializadora</class>

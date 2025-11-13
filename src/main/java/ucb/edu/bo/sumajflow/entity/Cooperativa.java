@@ -109,8 +109,6 @@ public class Cooperativa implements Serializable {
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "cooperativaId", fetch = FetchType.LAZY)
     private List<Sectores> sectoresList;
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "cooperativaId", fetch = FetchType.LAZY)
-    private List<AlmacenCooperativa> almacenCooperativaList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "cooperativaId", fetch = FetchType.LAZY)
     private List<CooperativaSocio> cooperativaSocioList;
     @JoinColumn(name = "usuarios_id", referencedColumnName = "id")
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
@@ -250,14 +248,7 @@ public class Cooperativa implements Serializable {
         this.sectoresList = sectoresList;
     }
 
-    @XmlTransient
-    public List<AlmacenCooperativa> getAlmacenCooperativaList() {
-        return almacenCooperativaList;
-    }
 
-    public void setAlmacenCooperativaList(List<AlmacenCooperativa> almacenCooperativaList) {
-        this.almacenCooperativaList = almacenCooperativaList;
-    }
 
     @XmlTransient
     public List<CooperativaSocio> getCooperativaSocioList() {
