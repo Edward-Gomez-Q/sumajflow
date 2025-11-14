@@ -11,7 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.UUID;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -71,10 +72,42 @@ public class MinioService {
     }
 
     /**
+     * Genera un nombre de archivo corto y único
+     * Formato: timestamp_random.extension (ej: 20241113_a3f9.jpg)
+     */
+    private String generateShortFilename(String originalFilename) {
+        // Obtener extensión
+        String extension = "";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+
+        // Generar timestamp corto (solo los últimos 8 dígitos del timestamp)
+        String timestamp = String.valueOf(System.currentTimeMillis()).substring(5);
+
+        // Generar 4 caracteres aleatorios
+        String randomChars = Long.toHexString(Double.doubleToLongBits(Math.random())).substring(0, 4);
+
+        return timestamp + "_" + randomChars + extension;
+    }
+
+    /**
+     * Limpia el nombre de archivo de caracteres especiales
+     */
+    private String sanitizeFilename(String filename) {
+        if (filename == null) return "file";
+
+        // Remover caracteres especiales y espacios
+        return filename.replaceAll("[^a-zA-Z0-9.-]", "_")
+                .replaceAll("_{2,}", "_")
+                .toLowerCase();
+    }
+
+    /**
      * Sube un archivo a MinIO
      * @param file archivo a subir
-     * @param folder carpeta donde guardar (ej: "carnets", "pdfs", "fotos")
-     * @return nombre del archivo guardado
+     * @param folder carpeta donde guardar (ej: "documentos-socios", "pdfs", "fotos")
+     * @return nombre del archivo guardado (objectName completo: folder/filename)
      */
     public String uploadFile(MultipartFile file, String folder) throws Exception {
         ensureBucketExists();
@@ -84,13 +117,13 @@ public class MinioService {
             throw new IllegalArgumentException("El archivo está vacío");
         }
 
-        // Generar nombre único para el archivo
-        String originalFilename = file.getOriginalFilename();
-        String extension = originalFilename != null && originalFilename.contains(".")
-                ? originalFilename.substring(originalFilename.lastIndexOf("."))
-                : "";
-        String filename = UUID.randomUUID().toString() + extension;
-        String objectName = folder + "/" + filename;
+        // Generar nombre corto y único para el archivo
+        String filename = generateShortFilename(file.getOriginalFilename());
+
+        // Sanitizar el folder
+        String sanitizedFolder = sanitizeFilename(folder);
+
+        String objectName = sanitizedFolder + "/" + filename;
 
         // Subir archivo
         minioClient.putObject(
@@ -106,9 +139,9 @@ public class MinioService {
     }
 
     /**
-     * Obtiene la URL pública de un archivo
-     * @param objectName nombre del objeto en MinIO
-     * @return URL del archivo
+     * Obtiene la URL pública de un archivo con firma temporal
+     * @param objectName nombre del objeto en MinIO (folder/filename)
+     * @return URL temporal del archivo
      */
     public String getFileUrl(String objectName) throws Exception {
         return minioClient.getPresignedObjectUrl(
@@ -151,7 +184,7 @@ public class MinioService {
 
     /**
      * Elimina un archivo
-     * @param objectName nombre del objeto en MinIO
+     * @param objectName nombre del objeto en MinIO (folder/filename)
      */
     public void deleteFile(String objectName) throws Exception {
         minioClient.removeObject(
@@ -160,5 +193,24 @@ public class MinioService {
                         .object(objectName)
                         .build()
         );
+    }
+
+    /**
+     * Verifica si un archivo existe
+     * @param objectName nombre del objeto en MinIO
+     * @return true si existe, false si no
+     */
+    public boolean fileExists(String objectName) {
+        try {
+            minioClient.statObject(
+                    StatObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build()
+            );
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

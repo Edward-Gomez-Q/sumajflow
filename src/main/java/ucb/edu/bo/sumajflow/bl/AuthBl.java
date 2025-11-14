@@ -25,6 +25,8 @@ public class AuthBl {
     private final SectoresRepository sectoresRepository;
     private final SectoresCoordenadasRepository sectoresCoordenadasRepository;
     private final BalanzaCooperativaRepository balanzaCooperativaRepository;
+    private final SocioRepository socioRepository;
+    private final CooperativaSocioRepository cooperativaSocioRepository;
 
     public AuthBl(
             UsuariosRepository usuariosRepository,
@@ -35,7 +37,9 @@ public class AuthBl {
             CooperativaRepository cooperativaRepository,
             SectoresRepository sectoresRepository,
             SectoresCoordenadasRepository sectoresCoordenadasRepository,
-            BalanzaCooperativaRepository balanzaCooperativaRepository
+            BalanzaCooperativaRepository balanzaCooperativaRepository,
+            SocioRepository socioRepository,
+            CooperativaSocioRepository cooperativaSocioRepository
     ) {
         this.usuariosRepository = usuariosRepository;
         this.tipoUsuarioRepository = tipoUsuarioRepository;
@@ -46,6 +50,8 @@ public class AuthBl {
         this.sectoresRepository = sectoresRepository;
         this.sectoresCoordenadasRepository = sectoresCoordenadasRepository;
         this.balanzaCooperativaRepository = balanzaCooperativaRepository;
+        this.socioRepository = socioRepository;
+        this.cooperativaSocioRepository = cooperativaSocioRepository;
     }
 
     /**
@@ -117,11 +123,30 @@ public class AuthBl {
     }
 
     /**
-     * Placeholder para registrar socio - implementar cuando se requiera
+     * Registra un socio completo con todos sus datos relacionados
      */
     @Transactional
     public Usuarios registerSocio(OnBoardingDto dto) {
-        throw new UnsupportedOperationException("Registro de socio aún no implementado");
+        // 1. Buscar o crear tipo de usuario
+        TipoUsuario tipoUsuario = findOrCreateTipoUsuario("socio");
+
+        // 2. Crear usuario
+        Usuarios usuario = createUsuario(dto.getUsuario(), tipoUsuario);
+
+        // 3. Crear persona
+        Persona persona = createPersona(dto.getPersona(), usuario);
+
+        // 4. Registrar en auditoría
+        registrarAuditoria(usuario, "usuarios", "INSERT",
+                "Registro de nuevo usuario tipo socio: " + usuario.getCorreo());
+
+        // 5. Crear socio
+        Socio socio = createSocio(dto.getSocio(), usuario);
+
+        // 6. Crear relación cooperativa-socio
+        createCooperativaSocio(dto.getSocio(), socio);
+
+        return usuario;
     }
 
     /**
@@ -259,5 +284,30 @@ public class AuthBl {
             return null;
         }
         return Date.valueOf(localDate);
+    }
+
+    private Socio createSocio(ucb.edu.bo.sumajflow.dto.SocioDto dto, Usuarios usuario) {
+        Socio socio = new Socio();
+        socio.setFechaEnvio(new Timestamp(System.currentTimeMillis()));
+        socio.setEstado("pendiente");
+        socio.setCarnetAfiliacionUrl(dto.getCarnetAfiliacionUrl());
+        socio.setCarnetIdentidadUrl(dto.getCarnetIdentidadUrl());
+        socio.setUsuariosId(usuario);
+        return socioRepository.save(socio);
+    }
+
+    private CooperativaSocio createCooperativaSocio(ucb.edu.bo.sumajflow.dto.SocioDto dto, Socio socio) {
+        // Buscar cooperativa
+        Cooperativa cooperativa = cooperativaRepository.findById(dto.getCooperativaId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Cooperativa no encontrada con ID: " + dto.getCooperativaId()));
+
+        CooperativaSocio cooperativaSocio = new CooperativaSocio();
+        cooperativaSocio.setCooperativaId(cooperativa);
+        cooperativaSocio.setSocioId(socio);
+        cooperativaSocio.setFechaAfiliacion(new Date(System.currentTimeMillis()));
+        cooperativaSocio.setEstado("pendiente");
+        cooperativaSocio.setObservaciones("Solicitud de afiliación pendiente de aprobación");
+        return cooperativaSocioRepository.save(cooperativaSocio);
     }
 }

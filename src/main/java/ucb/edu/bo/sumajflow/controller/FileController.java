@@ -9,7 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ucb.edu.bo.sumajflow.bl.MinioService;
-import ucb.edu.bo.sumajflow.dto.FileUploadResponseDto;
 
 import java.io.InputStream;
 import java.util.HashMap;
@@ -59,18 +58,16 @@ public class FileController {
 
             // Subir archivo
             String objectName = minioService.uploadFile(file, folder);
-            String fileUrl = minioService.getFileUrl(objectName);
 
-            FileUploadResponseDto fileResponse = new FileUploadResponseDto(
-                    objectName,
-                    fileUrl,
-                    file.getContentType(),
-                    file.getSize()
-            );
+            // Crear respuesta simple con objectName
+            Map<String, Object> fileData = new HashMap<>();
+            fileData.put("objectName", objectName);
+            fileData.put("contentType", file.getContentType());
+            fileData.put("size", file.getSize());
 
             response.put("success", true);
             response.put("message", "Archivo subido exitosamente");
-            response.put("data", fileResponse);
+            response.put("data", fileData);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 

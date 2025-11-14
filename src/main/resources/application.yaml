@@ -1,7 +1,7 @@
 minio:
   url: http://localhost:9000
-  access-key: cu98c7518Sqr1mzzpcfp
-  secret-key: IRpCocjRVSPMyyHqIfusvoJqcypka7ZJ0p3dJXEh
+  access-key: evmKeSLbHDVLeWkDMro0
+  secret-key: 10bgVyv1cUhwJANlUvRaranlA84UQeuRbdH3WmZm
   bucket-name: sumajflow
 spring:
   servlet:
