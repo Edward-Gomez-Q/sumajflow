@@ -27,6 +27,14 @@ public class AuthBl {
     private final BalanzaCooperativaRepository balanzaCooperativaRepository;
     private final SocioRepository socioRepository;
     private final CooperativaSocioRepository cooperativaSocioRepository;
+    private final IngenioMineroRepository ingenioMineroRepository;
+    private final PlantaRepository plantaRepository;
+    private final BalanzaIngenioRepository balanzaIngenioRepository;
+    private final AlmacenIngenioRepository almacenIngenioRepository;
+    private final MineralesRepository mineralesRepository;
+    private final ProcesosRepository procesosRepository;
+    private final PlantaMineralesRepository plantaMineralesRepository;
+    private final ProcesosPlantaRepository procesosPlantaRepository;
 
     public AuthBl(
             UsuariosRepository usuariosRepository,
@@ -39,7 +47,15 @@ public class AuthBl {
             SectoresCoordenadasRepository sectoresCoordenadasRepository,
             BalanzaCooperativaRepository balanzaCooperativaRepository,
             SocioRepository socioRepository,
-            CooperativaSocioRepository cooperativaSocioRepository
+            CooperativaSocioRepository cooperativaSocioRepository,
+            IngenioMineroRepository ingenioMineroRepository,
+            PlantaRepository plantaRepository,
+            BalanzaIngenioRepository balanzaIngenioRepository,
+            AlmacenIngenioRepository almacenIngenioRepository,
+            MineralesRepository mineralesRepository,
+            ProcesosRepository procesosRepository,
+            PlantaMineralesRepository plantaMineralesRepository,
+            ProcesosPlantaRepository procesosPlantaRepository
     ) {
         this.usuariosRepository = usuariosRepository;
         this.tipoUsuarioRepository = tipoUsuarioRepository;
@@ -52,6 +68,14 @@ public class AuthBl {
         this.balanzaCooperativaRepository = balanzaCooperativaRepository;
         this.socioRepository = socioRepository;
         this.cooperativaSocioRepository = cooperativaSocioRepository;
+        this.ingenioMineroRepository = ingenioMineroRepository;
+        this.plantaRepository = plantaRepository;
+        this.balanzaIngenioRepository = balanzaIngenioRepository;
+        this.almacenIngenioRepository = almacenIngenioRepository;
+        this.mineralesRepository = mineralesRepository;
+        this.procesosRepository = procesosRepository;
+        this.plantaMineralesRepository = plantaMineralesRepository;
+        this.procesosPlantaRepository = procesosPlantaRepository;
     }
 
     /**
@@ -150,11 +174,58 @@ public class AuthBl {
     }
 
     /**
-     * Placeholder para registrar ingenio - implementar cuando se requiera
+     * Registra un ingenio minero completo con todos sus datos relacionados
      */
     @Transactional
     public Usuarios registerIngenio(OnBoardingDto dto) {
-        throw new UnsupportedOperationException("Registro de ingenio aún no implementado");
+        // 1. Buscar o crear tipo de usuario
+        TipoUsuario tipoUsuario = findOrCreateTipoUsuario("ingenio");
+
+        // 2. Crear usuario
+        Usuarios usuario = createUsuario(dto.getUsuario(), tipoUsuario);
+
+        // 3. Crear persona
+        Persona persona = createPersona(dto.getPersona(), usuario);
+
+        // 4. Registrar en auditoría
+        registrarAuditoria(usuario, "usuarios", "INSERT",
+                "Registro de nuevo usuario tipo ingenio: " + usuario.getCorreo());
+
+        // 5. Crear ingenio minero
+        IngenioMinero ingenio = createIngenioMinero(dto.getIngenio(), usuario);
+
+        // 6. Crear planta
+        if (dto.getIngenio().getPlanta() != null) {
+            Planta planta = createPlanta(dto.getIngenio().getPlanta(), ingenio);
+
+            // 6.1 Crear relaciones planta-minerales
+            if (dto.getIngenio().getPlanta().getMinerales() != null) {
+                dto.getIngenio().getPlanta().getMinerales().forEach(mineralId -> {
+                    createPlantaMineral(planta, mineralId);
+                });
+            }
+
+            // 6.2 Crear relaciones planta-procesos
+            if (dto.getIngenio().getPlanta().getProcesos() != null) {
+                dto.getIngenio().getPlanta().getProcesos().forEach(procesoDto -> {
+                    createPlantaProceso(planta, procesoDto.getId());
+                });
+            }
+        }
+
+        // 7. Crear balanza
+        if (dto.getIngenio().getBalanza() != null) {
+            createBalanzaIngenio(dto.getIngenio().getBalanza(), ingenio);
+        }
+
+        // 8. Crear almacenes
+        if (dto.getIngenio().getAlmacenes() != null) {
+            dto.getIngenio().getAlmacenes().forEach(almacenDto -> {
+                createAlmacenIngenio(almacenDto, ingenio);
+            });
+        }
+
+        return usuario;
     }
 
     /**
@@ -309,5 +380,98 @@ public class AuthBl {
         cooperativaSocio.setEstado("pendiente");
         cooperativaSocio.setObservaciones("Solicitud de afiliación pendiente de aprobación");
         return cooperativaSocioRepository.save(cooperativaSocio);
+    }
+
+    private IngenioMinero createIngenioMinero(ucb.edu.bo.sumajflow.dto.IngenioDto dto, Usuarios usuario) {
+        IngenioMinero ingenio = new IngenioMinero();
+        ingenio.setRazonSocial(dto.getRazonSocial());
+        ingenio.setNit(dto.getNit());
+        ingenio.setNim(dto.getNim());
+        ingenio.setCorreoContacto(dto.getCorreoContacto());
+        ingenio.setNumeroTelefonoFijo(dto.getNumeroTelefonoFijo());
+        ingenio.setNumeroTelefonoMovil(dto.getNumeroTelefonoMovil());
+        ingenio.setDepartamento(dto.getDepartamento());
+        ingenio.setProvincia(dto.getProvincia());
+        ingenio.setMunicipio(dto.getMunicipio());
+        ingenio.setDireccion(dto.getDireccion());
+        ingenio.setLatitud(dto.getLatitud());
+        ingenio.setLongitud(dto.getLongitud());
+        ingenio.setUsuariosId(usuario);
+        return ingenioMineroRepository.save(ingenio);
+    }
+
+    private Planta createPlanta(ucb.edu.bo.sumajflow.dto.PlantaDto dto, IngenioMinero ingenio) {
+        Planta planta = new Planta();
+        planta.setCupoMinimo(dto.getCupoMinimo());
+        planta.setCapacidadProcesamiento(dto.getCapacidadProcesamiento());
+        planta.setCostoProcesamiento(dto.getCostoProcesamiento());
+        planta.setLicenciaAmbientalUrl(dto.getLicenciaAmbientalUrl());
+        planta.setDepartamento(dto.getDepartamento());
+        planta.setProvincia(dto.getProvincia());
+        planta.setMunicipio(dto.getMunicipio());
+        planta.setDireccion(dto.getDireccion());
+        planta.setLatitud(dto.getLatitud());
+        planta.setLongitud(dto.getLongitud());
+        planta.setIngenioMineroId(ingenio);
+        return plantaRepository.save(planta);
+    }
+
+    private PlantaMinerales createPlantaMineral(Planta planta, Integer mineralId) {
+        // Buscar mineral
+        Minerales mineral = mineralesRepository.findById(mineralId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Mineral no encontrado con ID: " + mineralId));
+
+        PlantaMinerales plantaMineral = new PlantaMinerales();
+        plantaMineral.setPlantaId(planta);
+        plantaMineral.setMineralesId(mineral);
+        return plantaMineralesRepository.save(plantaMineral);
+    }
+
+    private ProcesosPlanta createPlantaProceso(Planta planta, Integer procesoId) {
+        // Buscar proceso
+        Procesos proceso = procesosRepository.findById(procesoId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Proceso no encontrado con ID: " + procesoId));
+
+        ProcesosPlanta procesosPlanta = new ProcesosPlanta();
+        procesosPlanta.setPlantaId(planta);
+        procesosPlanta.setProcesosId(proceso);
+        return procesosPlantaRepository.save(procesosPlanta);
+    }
+
+    private BalanzaIngenio createBalanzaIngenio(BalanzaDto dto, IngenioMinero ingenio) {
+        BalanzaIngenio balanza = new BalanzaIngenio();
+        balanza.setNombre(dto.getNombre());
+        balanza.setMarca(dto.getMarca());
+        balanza.setModelo(dto.getModelo());
+        balanza.setNumeroSerie(dto.getNumeroSerie());
+        balanza.setCapacidadMaxima(dto.getCapacidadMaxima());
+        balanza.setPrecisionMinima(dto.getPrecisionMinima());
+        balanza.setFechaUltimaCalibracion(convertToDate(dto.getFechaUltimaCalibracion()));
+        balanza.setFechaProximaCalibracion(convertToDate(dto.getFechaProximaCalibracion()));
+        balanza.setDepartamento(dto.getDepartamento());
+        balanza.setProvincia(dto.getProvincia());
+        balanza.setMunicipio(dto.getMunicipio());
+        balanza.setDireccion(dto.getDireccion());
+        balanza.setLatitud(dto.getLatitud());
+        balanza.setLongitud(dto.getLongitud());
+        balanza.setIngenioMineroId(ingenio);
+        return balanzaIngenioRepository.save(balanza);
+    }
+
+    private AlmacenIngenio createAlmacenIngenio(ucb.edu.bo.sumajflow.dto.AlmacenDto dto, IngenioMinero ingenio) {
+        AlmacenIngenio almacen = new AlmacenIngenio();
+        almacen.setNombre(dto.getNombre());
+        almacen.setCapacidadMaxima(dto.getCapacidadMaxima());
+        almacen.setArea(dto.getArea());
+        almacen.setDepartamento(dto.getDepartamento());
+        almacen.setProvincia(dto.getProvincia());
+        almacen.setMunicipio(dto.getMunicipio());
+        almacen.setDireccion(dto.getDireccion());
+        almacen.setLatitud(dto.getLatitud());
+        almacen.setLongitud(dto.getLongitud());
+        almacen.setIngenioMineroId(ingenio);
+        return almacenIngenioRepository.save(almacen);
     }
 }
