@@ -97,3 +97,9 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+
+jwt:
+  secret: SumajFlowSecretKeyForJWTs1234567890
+  expiration: 604800000 # 7 days
+  refresh-expiration: 2592000000 # 30 days
+  issuer: sumajflow-api

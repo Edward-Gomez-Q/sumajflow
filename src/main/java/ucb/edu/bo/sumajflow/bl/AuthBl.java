@@ -35,6 +35,9 @@ public class AuthBl {
     private final ProcesosRepository procesosRepository;
     private final PlantaMineralesRepository plantaMineralesRepository;
     private final ProcesosPlantaRepository procesosPlantaRepository;
+    private final ComercializadoraRepository comercializadoraRepository;
+    private final BalanzaComercializadoraRepository balanzaComercializadoraRepository;
+    private final AlmacenComercializadoraRepository almacenComercializadoraRepository;
 
     public AuthBl(
             UsuariosRepository usuariosRepository,
@@ -55,7 +58,10 @@ public class AuthBl {
             MineralesRepository mineralesRepository,
             ProcesosRepository procesosRepository,
             PlantaMineralesRepository plantaMineralesRepository,
-            ProcesosPlantaRepository procesosPlantaRepository
+            ProcesosPlantaRepository procesosPlantaRepository,
+            ComercializadoraRepository comercializadoraRepository,
+            BalanzaComercializadoraRepository balanzaComercializadoraRepository,
+            AlmacenComercializadoraRepository almacenComercializadoraRepository
     ) {
         this.usuariosRepository = usuariosRepository;
         this.tipoUsuarioRepository = tipoUsuarioRepository;
@@ -76,6 +82,9 @@ public class AuthBl {
         this.procesosRepository = procesosRepository;
         this.plantaMineralesRepository = plantaMineralesRepository;
         this.procesosPlantaRepository = procesosPlantaRepository;
+        this.comercializadoraRepository = comercializadoraRepository;
+        this.balanzaComercializadoraRepository = balanzaComercializadoraRepository;
+        this.almacenComercializadoraRepository = almacenComercializadoraRepository;
     }
 
     /**
@@ -229,11 +238,39 @@ public class AuthBl {
     }
 
     /**
-     * Placeholder para registrar comercializadora - implementar cuando se requiera
+     * Registra una comercializadora completa con todos sus datos relacionados
      */
     @Transactional
     public Usuarios registerComercializadora(OnBoardingDto dto) {
-        throw new UnsupportedOperationException("Registro de comercializadora aún no implementado");
+        // 1. Buscar o crear tipo de usuario
+        TipoUsuario tipoUsuario = findOrCreateTipoUsuario("comercializadora");
+
+        // 2. Crear usuario
+        Usuarios usuario = createUsuario(dto.getUsuario(), tipoUsuario);
+
+        // 3. Crear persona
+        Persona persona = createPersona(dto.getPersona(), usuario);
+
+        // 4. Registrar en auditoría
+        registrarAuditoria(usuario, "usuarios", "INSERT",
+                "Registro de nuevo usuario tipo comercializadora: " + usuario.getCorreo());
+
+        // 5. Crear comercializadora
+        Comercializadora comercializadora = createComercializadora(dto.getComercializadora(), usuario);
+
+        // 6. Crear almacenes
+        if (dto.getComercializadora().getAlmacenes() != null) {
+            dto.getComercializadora().getAlmacenes().forEach(almacenDto -> {
+                createAlmacenComercializadora(almacenDto, comercializadora);
+            });
+        }
+
+        // 7. Crear balanza
+        if (dto.getComercializadora().getBalanza() != null) {
+            createBalanzaComercializadora(dto.getComercializadora().getBalanza(), comercializadora);
+        }
+
+        return usuario;
     }
 
     // ==================== MÉTODOS AUXILIARES ====================
@@ -473,5 +510,60 @@ public class AuthBl {
         almacen.setLongitud(dto.getLongitud());
         almacen.setIngenioMineroId(ingenio);
         return almacenIngenioRepository.save(almacen);
+    }
+
+    private Comercializadora createComercializadora(ucb.edu.bo.sumajflow.dto.ComercializadoraDto dto, Usuarios usuario) {
+        Comercializadora comercializadora = new Comercializadora();
+        comercializadora.setRazonSocial(dto.getRazonSocial());
+        comercializadora.setNit(dto.getNit());
+        comercializadora.setNim(dto.getNim());
+        comercializadora.setCorreoContacto(dto.getCorreoContacto());
+        comercializadora.setNumeroTelefonoFijo(dto.getNumeroTelefonoFijo());
+        comercializadora.setNumeroTelefonoMovil(dto.getNumeroTelefonoMovil());
+        comercializadora.setDepartamento(dto.getDepartamento());
+        comercializadora.setProvincia(dto.getProvincia());
+        comercializadora.setMunicipio(dto.getMunicipio());
+        comercializadora.setDireccion(dto.getDireccion());
+        comercializadora.setLatitud(dto.getLatitud());
+        comercializadora.setLongitud(dto.getLongitud());
+        comercializadora.setUsuariosId(usuario);
+        return comercializadoraRepository.save(comercializadora);
+    }
+
+    private AlmacenComercializadora createAlmacenComercializadora(
+            ucb.edu.bo.sumajflow.dto.AlmacenDto dto, Comercializadora comercializadora) {
+        AlmacenComercializadora almacen = new AlmacenComercializadora();
+        almacen.setNombre(dto.getNombre());
+        almacen.setCapacidadMaxima(dto.getCapacidadMaxima());
+        almacen.setArea(dto.getArea());
+        almacen.setDepartamento(dto.getDepartamento());
+        almacen.setProvincia(dto.getProvincia());
+        almacen.setMunicipio(dto.getMunicipio());
+        almacen.setDireccion(dto.getDireccion());
+        almacen.setLatitud(dto.getLatitud());
+        almacen.setLongitud(dto.getLongitud());
+        almacen.setComercializadoraId(comercializadora);
+        return almacenComercializadoraRepository.save(almacen);
+    }
+
+    private BalanzaComercializadora createBalanzaComercializadora(
+            BalanzaDto dto, Comercializadora comercializadora) {
+        BalanzaComercializadora balanza = new BalanzaComercializadora();
+        balanza.setNombre(dto.getNombre());
+        balanza.setMarca(dto.getMarca());
+        balanza.setModelo(dto.getModelo());
+        balanza.setNumeroSerie(dto.getNumeroSerie());
+        balanza.setCapacidadMaxima(dto.getCapacidadMaxima());
+        balanza.setPrecisionMinima(dto.getPrecisionMinima());
+        balanza.setFechaUltimaCalibracion(convertToDate(dto.getFechaUltimaCalibracion()));
+        balanza.setFechaProximaCalibracion(convertToDate(dto.getFechaProximaCalibracion()));
+        balanza.setDepartamento(dto.getDepartamento());
+        balanza.setProvincia(dto.getProvincia());
+        balanza.setMunicipio(dto.getMunicipio());
+        balanza.setDireccion(dto.getDireccion());
+        balanza.setLatitud(dto.getLatitud());
+        balanza.setLongitud(dto.getLongitud());
+        balanza.setComercializadoraId(comercializadora);
+        return balanzaComercializadoraRepository.save(balanza);
     }
 }
