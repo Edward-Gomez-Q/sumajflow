@@ -3,11 +3,12 @@ package ucb.edu.bo.sumajflow.bl;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ucb.edu.bo.sumajflow.dto.BalanzaDto;
-import ucb.edu.bo.sumajflow.dto.OnBoardingDto;
-import ucb.edu.bo.sumajflow.dto.PersonaDto;
+import ucb.edu.bo.sumajflow.dto.*;
+import ucb.edu.bo.sumajflow.dto.login.LoginResponseDto;
+import ucb.edu.bo.sumajflow.dto.login.UserInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
+import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -38,6 +39,7 @@ public class AuthBl {
     private final ComercializadoraRepository comercializadoraRepository;
     private final BalanzaComercializadoraRepository balanzaComercializadoraRepository;
     private final AlmacenComercializadoraRepository almacenComercializadoraRepository;
+    private final JwtUtil jwtUtil;
 
     public AuthBl(
             UsuariosRepository usuariosRepository,
@@ -61,7 +63,8 @@ public class AuthBl {
             ProcesosPlantaRepository procesosPlantaRepository,
             ComercializadoraRepository comercializadoraRepository,
             BalanzaComercializadoraRepository balanzaComercializadoraRepository,
-            AlmacenComercializadoraRepository almacenComercializadoraRepository
+            AlmacenComercializadoraRepository almacenComercializadoraRepository,
+            JwtUtil jwtUtil
     ) {
         this.usuariosRepository = usuariosRepository;
         this.tipoUsuarioRepository = tipoUsuarioRepository;
@@ -85,6 +88,114 @@ public class AuthBl {
         this.comercializadoraRepository = comercializadoraRepository;
         this.balanzaComercializadoraRepository = balanzaComercializadoraRepository;
         this.almacenComercializadoraRepository = almacenComercializadoraRepository;
+        this.jwtUtil = jwtUtil;
+    }
+
+    /**
+     * Método de login
+     */
+    @Transactional(readOnly = true)
+    public LoginResponseDto login(String email, String password) {
+        // 1. Buscar usuario por correo
+        Usuarios usuario = usuariosRepository.findByCorreo((email))
+                .orElseThrow(() -> new IllegalArgumentException("Credenciales inválidas"));
+
+        // 2. Verificar contraseña
+        if (!passwordEncoder.matches(password, usuario.getContrasena())) {
+            throw new IllegalArgumentException("Credenciales inválidas");
+        }
+
+        // 3. Obtener datos de persona
+        Persona persona = personaRepository.findByUsuariosId(usuario)
+                .orElseThrow(() -> new IllegalArgumentException("Datos de persona no encontrados"));
+
+        // 4. Obtener rol
+        String rol = usuario.getTipoUsuarioId().getTipoUsuario();
+
+        // 5. Generar tokens
+        String accessToken = jwtUtil.generateAccessToken(
+                usuario.getId(),
+                usuario.getCorreo(),
+                rol
+        );
+
+        String refreshToken = jwtUtil.generateRefreshToken(
+                usuario.getId(),
+                usuario.getCorreo()
+        );
+
+        // 6. Crear UserInfoDto
+        UserInfoDto userInfo = new UserInfoDto(
+                usuario.getId(),
+                usuario.getCorreo(),
+                rol,
+                persona.getNombres(),
+                persona.getPrimerApellido(),
+                persona.getSegundoApellido()
+        );
+
+        // 7. Registrar en auditoría
+        registrarAuditoria(usuario, "usuarios", "LOGIN",
+                "Inicio de sesión exitoso: " + usuario.getCorreo());
+
+        // 8. Retornar respuesta
+        return new LoginResponseDto(accessToken, refreshToken, userInfo);
+    }
+
+    /**
+     * Método para refrescar el token
+     */
+    @Transactional(readOnly = true)
+    public LoginResponseDto refreshToken(String refreshToken) {
+        // 1. Validar refresh token
+        if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
+            throw new IllegalArgumentException("Refresh token inválido o expirado");
+        }
+
+        // 2. Extraer información del token
+        String correo = jwtUtil.extractCorreo(refreshToken);
+        Integer usuarioId = jwtUtil.extractUsuarioId(refreshToken);
+
+        // 3. Buscar usuario
+        Usuarios usuario = usuariosRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+
+        // 4. Verificar que el correo coincida
+        if (!usuario.getCorreo().equals(correo)) {
+            throw new IllegalArgumentException("Token inválido");
+        }
+
+        // 5. Obtener datos de persona
+        Persona persona = personaRepository.findByUsuariosId(usuario)
+                .orElseThrow(() -> new IllegalArgumentException("Datos de persona no encontrados"));
+
+        // 6. Obtener rol
+        String rol = usuario.getTipoUsuarioId().getTipoUsuario();
+
+        // 7. Generar nuevos tokens
+        String newAccessToken = jwtUtil.generateAccessToken(
+                usuario.getId(),
+                usuario.getCorreo(),
+                rol
+        );
+
+        String newRefreshToken = jwtUtil.generateRefreshToken(
+                usuario.getId(),
+                usuario.getCorreo()
+        );
+
+        // 8. Crear UserInfoDto
+        UserInfoDto userInfo = new UserInfoDto(
+                usuario.getId(),
+                usuario.getCorreo(),
+                rol,
+                persona.getNombres(),
+                persona.getPrimerApellido(),
+                persona.getSegundoApellido()
+        );
+
+        // 9. Retornar respuesta
+        return new LoginResponseDto(newAccessToken, newRefreshToken, userInfo);
     }
 
     /**

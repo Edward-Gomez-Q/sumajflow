@@ -35,6 +35,7 @@ public class JwtUtil {
      */
     private SecretKey getSigningKey() {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        // Genera la clave HMAC SHA de 256 bits
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
