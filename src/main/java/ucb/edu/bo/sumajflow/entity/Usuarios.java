@@ -62,6 +62,9 @@ public class Usuarios implements Serializable {
     private TipoUsuario tipoUsuarioId;
     @OneToMany(mappedBy = "usuariosId", fetch = FetchType.LAZY)
     private List<Auditoria> auditoriaList;
+    @OneToMany(mappedBy = "usuariosId", fetch = FetchType.LAZY)
+    private List<Notificacion> notificacionList;
+
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
     private List<Transportista> transportistaList;
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
@@ -134,6 +137,14 @@ public class Usuarios implements Serializable {
 
     public void setAuditoriaList(List<Auditoria> auditoriaList) {
         this.auditoriaList = auditoriaList;
+    }
+
+    @XmlTransient
+    public List<Notificacion> getNotificacionList() {
+        return notificacionList;
+    }
+    public void setNotificacionList(List<Notificacion> notificacionList) {
+        this.notificacionList = notificacionList;
     }
 
     @XmlTransient

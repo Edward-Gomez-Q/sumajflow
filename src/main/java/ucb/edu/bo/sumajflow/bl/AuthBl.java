@@ -13,6 +13,8 @@ import ucb.edu.bo.sumajflow.utils.JwtUtil;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class AuthBl {
@@ -21,7 +23,6 @@ public class AuthBl {
     private final TipoUsuarioRepository tipoUsuarioRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final PersonaRepository personaRepository;
-    private final AuditoriaRepository auditoriaRepository;
     private final CooperativaRepository cooperativaRepository;
     private final SectoresRepository sectoresRepository;
     private final SectoresCoordenadasRepository sectoresCoordenadasRepository;
@@ -41,12 +42,15 @@ public class AuthBl {
     private final AlmacenComercializadoraRepository almacenComercializadoraRepository;
     private final JwtUtil jwtUtil;
 
+    // NUEVOS SERVICIOS
+    private final AuditoriaBl auditoriaBl;
+    private final NotificacionBl notificacionBl;
+
     public AuthBl(
             UsuariosRepository usuariosRepository,
             TipoUsuarioRepository tipoUsuarioRepository,
             BCryptPasswordEncoder passwordEncoder,
             PersonaRepository personaRepository,
-            AuditoriaRepository auditoriaRepository,
             CooperativaRepository cooperativaRepository,
             SectoresRepository sectoresRepository,
             SectoresCoordenadasRepository sectoresCoordenadasRepository,
@@ -64,13 +68,14 @@ public class AuthBl {
             ComercializadoraRepository comercializadoraRepository,
             BalanzaComercializadoraRepository balanzaComercializadoraRepository,
             AlmacenComercializadoraRepository almacenComercializadoraRepository,
-            JwtUtil jwtUtil
+            JwtUtil jwtUtil,
+            AuditoriaBl auditoriaBl,
+            NotificacionBl notificacionBl
     ) {
         this.usuariosRepository = usuariosRepository;
         this.tipoUsuarioRepository = tipoUsuarioRepository;
         this.passwordEncoder = passwordEncoder;
         this.personaRepository = personaRepository;
-        this.auditoriaRepository = auditoriaRepository;
         this.cooperativaRepository = cooperativaRepository;
         this.sectoresRepository = sectoresRepository;
         this.sectoresCoordenadasRepository = sectoresCoordenadasRepository;
@@ -89,12 +94,14 @@ public class AuthBl {
         this.balanzaComercializadoraRepository = balanzaComercializadoraRepository;
         this.almacenComercializadoraRepository = almacenComercializadoraRepository;
         this.jwtUtil = jwtUtil;
+        this.auditoriaBl = auditoriaBl;
+        this.notificacionBl = notificacionBl;
     }
 
     /**
      * Método de login
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponseDto login(String email, String password) {
         // 1. Buscar usuario por correo
         Usuarios usuario = usuariosRepository.findByCorreo((email))
@@ -111,12 +118,19 @@ public class AuthBl {
 
         // 4. Obtener rol
         String rol = usuario.getTipoUsuarioId().getTipoUsuario();
+        Boolean aprobado = true;
+        if ("socio".equals(rol)) {
+            Socio socio = socioRepository.findByUsuariosId(usuario)
+                    .orElseThrow(() -> new IllegalArgumentException("Datos de socio no encontrados"));
+            aprobado = "aprobado".equals(socio.getEstado());
+        }
 
         // 5. Generar tokens
         String accessToken = jwtUtil.generateAccessToken(
                 usuario.getId(),
                 usuario.getCorreo(),
-                rol
+                rol,
+                aprobado
         );
 
         String refreshToken = jwtUtil.generateRefreshToken(
@@ -135,8 +149,7 @@ public class AuthBl {
         );
 
         // 7. Registrar en auditoría
-        registrarAuditoria(usuario, "usuarios", "LOGIN",
-                "Inicio de sesión exitoso: " + usuario.getCorreo());
+        auditoriaBl.registrarLogin(usuario);
 
         // 8. Retornar respuesta
         return new LoginResponseDto(accessToken, refreshToken, userInfo);
@@ -145,7 +158,7 @@ public class AuthBl {
     /**
      * Método para refrescar el token
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponseDto refreshToken(String refreshToken) {
         // 1. Validar refresh token
         if (!jwtUtil.validateToken(refreshToken) || !jwtUtil.isRefreshToken(refreshToken)) {
@@ -171,12 +184,19 @@ public class AuthBl {
 
         // 6. Obtener rol
         String rol = usuario.getTipoUsuarioId().getTipoUsuario();
+        Boolean aprobado = true;
+        if ("socio".equals(rol)) {
+            Socio socio = socioRepository.findByUsuariosId(usuario)
+                    .orElseThrow(() -> new IllegalArgumentException("Datos de socio no encontrados"));
+            aprobado = "aprobado".equals(socio.getEstado());
+        }
 
         // 7. Generar nuevos tokens
         String newAccessToken = jwtUtil.generateAccessToken(
                 usuario.getId(),
                 usuario.getCorreo(),
-                rol
+                rol,
+                aprobado
         );
 
         String newRefreshToken = jwtUtil.generateRefreshToken(
@@ -237,14 +257,10 @@ public class AuthBl {
         // 3. Crear persona
         Persona persona = createPersona(dto.getPersona(), usuario);
 
-        // 4. Registrar en auditoría
-        registrarAuditoria(usuario, "usuarios", "INSERT",
-                "Registro de nuevo usuario tipo cooperativa: " + usuario.getCorreo());
-
-        // 5. Crear cooperativa
+        // 4. Crear cooperativa
         Cooperativa cooperativa = createCooperativa(dto.getCooperativa(), usuario);
 
-        // 6. Crear sectores con coordenadas
+        // 5. Crear sectores con coordenadas
         if (dto.getCooperativa().getSectores() != null) {
             dto.getCooperativa().getSectores().forEach(sectorDto -> {
                 Sectores sector = createSector(sectorDto, cooperativa);
@@ -258,10 +274,26 @@ public class AuthBl {
             });
         }
 
-        // 7. Crear balanza
+        // 6. Crear balanza
         if (dto.getCooperativa().getBalanza() != null) {
             createBalanzaCooperativa(dto.getCooperativa().getBalanza(), cooperativa);
         }
+
+        //  7. Registrar en auditoría
+        auditoriaBl.registrarRegistro(usuario, "cooperativa");
+
+        //  8. Enviar notificación de bienvenida
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("cooperativaId", cooperativa.getId());
+        metadata.put("razonSocial", cooperativa.getRazonSocial());
+
+        notificacionBl.crearNotificacion(
+                usuario.getId(),
+                "success",
+                "¡Bienvenido a SumajFlow!",
+                "Tu cuenta de cooperativa ha sido creada exitosamente. Ahora puedes gestionar tus operaciones mineras.",
+                metadata
+        );
 
         return usuario;
     }
@@ -280,15 +312,56 @@ public class AuthBl {
         // 3. Crear persona
         Persona persona = createPersona(dto.getPersona(), usuario);
 
-        // 4. Registrar en auditoría
-        registrarAuditoria(usuario, "usuarios", "INSERT",
-                "Registro de nuevo usuario tipo socio: " + usuario.getCorreo());
-
-        // 5. Crear socio
+        // 4. Crear socio
         Socio socio = createSocio(dto.getSocio(), usuario);
 
-        // 6. Crear relación cooperativa-socio
-        createCooperativaSocio(dto.getSocio(), socio);
+        // 5. Crear relación cooperativa-socio
+        CooperativaSocio cooperativaSocio = createCooperativaSocio(dto.getSocio(), socio);
+
+        //  6. Registrar en auditoría
+        auditoriaBl.registrarRegistro(usuario, "socio");
+
+        //  7. Notificar a la cooperativa sobre nueva solicitud
+        Integer cooperativaUsuarioId = cooperativaSocio.getCooperativaId().getUsuariosId().getId();
+
+        Map<String, Object> metadataCooperativa = new HashMap<>();
+        metadataCooperativa.put("tipo", "nueva_solicitud_socio");
+        metadataCooperativa.put("socioId", socio.getId());
+        metadataCooperativa.put("solicitudId", socio.getId().toString());
+        metadataCooperativa.put("cooperativaSocioId", cooperativaSocio.getId());
+        metadataCooperativa.put("nombreCompleto", persona.getNombres() + " " + persona.getPrimerApellido());
+        metadataCooperativa.put("nombres", persona.getNombres());
+        metadataCooperativa.put("primerApellido", persona.getPrimerApellido());
+        metadataCooperativa.put("segundoApellido", persona.getSegundoApellido());
+        metadataCooperativa.put("ci", persona.getCi());
+        metadataCooperativa.put("correo", usuario.getCorreo());
+        metadataCooperativa.put("estado", "pendiente");
+        metadataCooperativa.put("fechaEnvio", socio.getFechaEnvio().toString());
+
+        notificacionBl.crearNotificacion(
+                cooperativaUsuarioId,
+                "info",
+                "Nueva solicitud de socio",
+                persona.getNombres() + " " + persona.getPrimerApellido() +
+                        " ha solicitado unirse a tu cooperativa",
+                metadataCooperativa
+        );
+
+        //  8. Notificar al socio sobre su solicitud enviada
+        Map<String, Object> metadataSocio = new HashMap<>();
+        metadataSocio.put("socioId", socio.getId());
+        metadataSocio.put("cooperativaId", cooperativaSocio.getCooperativaId().getId());
+        metadataSocio.put("cooperativaNombre", cooperativaSocio.getCooperativaId().getRazonSocial());
+        metadataSocio.put("estado", "pendiente");
+
+        notificacionBl.crearNotificacion(
+                usuario.getId(),
+                "info",
+                "Solicitud enviada",
+                "Tu solicitud para unirte a " + cooperativaSocio.getCooperativaId().getRazonSocial() +
+                        " está en revisión. Te notificaremos cuando sea procesada.",
+                metadataSocio
+        );
 
         return usuario;
     }
@@ -307,25 +380,21 @@ public class AuthBl {
         // 3. Crear persona
         Persona persona = createPersona(dto.getPersona(), usuario);
 
-        // 4. Registrar en auditoría
-        registrarAuditoria(usuario, "usuarios", "INSERT",
-                "Registro de nuevo usuario tipo ingenio: " + usuario.getCorreo());
-
-        // 5. Crear ingenio minero
+        // 4. Crear ingenio minero
         IngenioMinero ingenio = createIngenioMinero(dto.getIngenio(), usuario);
 
-        // 6. Crear planta
+        // 5. Crear planta
         if (dto.getIngenio().getPlanta() != null) {
             Planta planta = createPlanta(dto.getIngenio().getPlanta(), ingenio);
 
-            // 6.1 Crear relaciones planta-minerales
+            // 5.1 Crear relaciones planta-minerales
             if (dto.getIngenio().getPlanta().getMinerales() != null) {
                 dto.getIngenio().getPlanta().getMinerales().forEach(mineralId -> {
                     createPlantaMineral(planta, mineralId);
                 });
             }
 
-            // 6.2 Crear relaciones planta-procesos
+            // 5.2 Crear relaciones planta-procesos
             if (dto.getIngenio().getPlanta().getProcesos() != null) {
                 dto.getIngenio().getPlanta().getProcesos().forEach(procesoDto -> {
                     createPlantaProceso(planta, procesoDto.getId());
@@ -333,17 +402,36 @@ public class AuthBl {
             }
         }
 
-        // 7. Crear balanza
+        // 6. Crear balanza
         if (dto.getIngenio().getBalanza() != null) {
             createBalanzaIngenio(dto.getIngenio().getBalanza(), ingenio);
         }
 
-        // 8. Crear almacenes
+        // 7. Crear almacenes
         if (dto.getIngenio().getAlmacenes() != null) {
             dto.getIngenio().getAlmacenes().forEach(almacenDto -> {
                 createAlmacenIngenio(almacenDto, ingenio);
             });
         }
+
+        //  8. Registrar en auditoría
+        auditoriaBl.registrarRegistro(usuario, "ingenio");
+
+        //  9. Enviar notificación de bienvenida
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("ingenioId", ingenio.getId());
+        metadata.put("razonSocial", ingenio.getRazonSocial());
+        metadata.put("nPlanta", dto.getIngenio().getPlanta() != null ? 1 : 0);
+        metadata.put("nAlmacenes", dto.getIngenio().getAlmacenes() != null ?
+                dto.getIngenio().getAlmacenes().size() : 0);
+
+        notificacionBl.crearNotificacion(
+                usuario.getId(),
+                "success",
+                "¡Bienvenido a SumajFlow!",
+                "Tu ingenio minero ha sido registrado exitosamente. Puedes comenzar a gestionar el procesamiento de minerales.",
+                metadata
+        );
 
         return usuario;
     }
@@ -362,24 +450,38 @@ public class AuthBl {
         // 3. Crear persona
         Persona persona = createPersona(dto.getPersona(), usuario);
 
-        // 4. Registrar en auditoría
-        registrarAuditoria(usuario, "usuarios", "INSERT",
-                "Registro de nuevo usuario tipo comercializadora: " + usuario.getCorreo());
-
-        // 5. Crear comercializadora
+        // 4. Crear comercializadora
         Comercializadora comercializadora = createComercializadora(dto.getComercializadora(), usuario);
 
-        // 6. Crear almacenes
+        // 5. Crear almacenes
         if (dto.getComercializadora().getAlmacenes() != null) {
             dto.getComercializadora().getAlmacenes().forEach(almacenDto -> {
                 createAlmacenComercializadora(almacenDto, comercializadora);
             });
         }
 
-        // 7. Crear balanza
+        // 6. Crear balanza
         if (dto.getComercializadora().getBalanza() != null) {
             createBalanzaComercializadora(dto.getComercializadora().getBalanza(), comercializadora);
         }
+
+        //  7. Registrar en auditoría
+        auditoriaBl.registrarRegistro(usuario, "comercializadora");
+
+        //  8. Enviar notificación de bienvenida
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("comercializadoraId", comercializadora.getId());
+        metadata.put("razonSocial", comercializadora.getRazonSocial());
+        metadata.put("nAlmacenes", dto.getComercializadora().getAlmacenes() != null ?
+                dto.getComercializadora().getAlmacenes().size() : 0);
+
+        notificacionBl.crearNotificacion(
+                usuario.getId(),
+                "success",
+                "¡Bienvenido a SumajFlow!",
+                "Tu comercializadora ha sido registrada exitosamente. Ya puedes comenzar a gestionar la compra y venta de minerales.",
+                metadata
+        );
 
         return usuario;
     }
@@ -395,10 +497,9 @@ public class AuthBl {
                 });
     }
 
-    private Usuarios createUsuario(ucb.edu.bo.sumajflow.dto.UsuarioDto dto, TipoUsuario tipoUsuario) {
+    private Usuarios createUsuario(UsuarioDto dto, TipoUsuario tipoUsuario) {
         Usuarios usuario = new Usuarios();
         usuario.setCorreo(dto.getCorreo());
-        // Encriptar contraseña usando BCrypt
         usuario.setContrasena(passwordEncoder.encode(dto.getContrasena()));
         usuario.setTipoUsuarioId(tipoUsuario);
         return usuariosRepository.save(usuario);
@@ -410,7 +511,6 @@ public class AuthBl {
         persona.setPrimerApellido(dto.getPrimerApellido());
         persona.setSegundoApellido(dto.getSegundoApellido());
         persona.setCi(dto.getCi());
-        // Convertir LocalDate a java.sql.Date
         persona.setFechaNacimiento(convertToDate(dto.getFechaNacimiento()));
         persona.setNumeroCelular(dto.getNumeroCelular());
         persona.setGenero(dto.getGenero());
@@ -425,17 +525,7 @@ public class AuthBl {
         return personaRepository.save(persona);
     }
 
-    private void registrarAuditoria(Usuarios usuario, String tabla, String accion, String descripcion) {
-        Auditoria auditoria = new Auditoria();
-        auditoria.setUsuariosId(usuario);
-        auditoria.setTablaAfectada(tabla);
-        auditoria.setAccion(accion);
-        auditoria.setDescripcion(descripcion);
-        auditoria.setFecha(new Timestamp(System.currentTimeMillis()));
-        auditoriaRepository.save(auditoria);
-    }
-
-    private Cooperativa createCooperativa(ucb.edu.bo.sumajflow.dto.CooperativaDto dto, Usuarios usuario) {
+    private Cooperativa createCooperativa(CooperativaDto dto, Usuarios usuario) {
         Cooperativa cooperativa = new Cooperativa();
         cooperativa.setRazonSocial(dto.getRazonSocial());
         cooperativa.setNit(dto.getNit());
@@ -453,7 +543,7 @@ public class AuthBl {
         return cooperativaRepository.save(cooperativa);
     }
 
-    private Sectores createSector(ucb.edu.bo.sumajflow.dto.SectorDto dto, Cooperativa cooperativa) {
+    private Sectores createSector(SectorDto dto, Cooperativa cooperativa) {
         Sectores sector = new Sectores();
         sector.setNombre(dto.getNombre());
         sector.setColor(dto.getColor());
@@ -462,7 +552,7 @@ public class AuthBl {
     }
 
     private SectoresCoordenadas createSectorCoordenada(
-            ucb.edu.bo.sumajflow.dto.CoordenadaDto dto, Sectores sector) {
+            CoordenadaDto dto, Sectores sector) {
         SectoresCoordenadas coordenada = new SectoresCoordenadas();
         coordenada.setOrden(dto.getOrden());
         coordenada.setLatitud(dto.getLatitud());
@@ -480,7 +570,6 @@ public class AuthBl {
         balanza.setNumeroSerie(dto.getNumeroSerie());
         balanza.setCapacidadMaxima(dto.getCapacidadMaxima());
         balanza.setPrecisionMinima(dto.getPrecisionMinima());
-        // Convertir LocalDate a java.sql.Date
         balanza.setFechaUltimaCalibracion(convertToDate(dto.getFechaUltimaCalibracion()));
         balanza.setFechaProximaCalibracion(convertToDate(dto.getFechaProximaCalibracion()));
         balanza.setDepartamento(dto.getDepartamento());
@@ -493,11 +582,6 @@ public class AuthBl {
         return balanzaCooperativaRepository.save(balanza);
     }
 
-    /**
-     * Convierte LocalDate a java.sql.Date
-     * @param localDate fecha en formato LocalDate
-     * @return fecha en formato java.sql.Date, o null si localDate es null
-     */
     private Date convertToDate(LocalDate localDate) {
         if (localDate == null) {
             return null;
@@ -505,7 +589,7 @@ public class AuthBl {
         return Date.valueOf(localDate);
     }
 
-    private Socio createSocio(ucb.edu.bo.sumajflow.dto.SocioDto dto, Usuarios usuario) {
+    private Socio createSocio(SocioDto dto, Usuarios usuario) {
         Socio socio = new Socio();
         socio.setFechaEnvio(new Timestamp(System.currentTimeMillis()));
         socio.setEstado("pendiente");
@@ -515,8 +599,7 @@ public class AuthBl {
         return socioRepository.save(socio);
     }
 
-    private CooperativaSocio createCooperativaSocio(ucb.edu.bo.sumajflow.dto.SocioDto dto, Socio socio) {
-        // Buscar cooperativa
+    private CooperativaSocio createCooperativaSocio(SocioDto dto, Socio socio) {
         Cooperativa cooperativa = cooperativaRepository.findById(dto.getCooperativaId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Cooperativa no encontrada con ID: " + dto.getCooperativaId()));
@@ -524,13 +607,13 @@ public class AuthBl {
         CooperativaSocio cooperativaSocio = new CooperativaSocio();
         cooperativaSocio.setCooperativaId(cooperativa);
         cooperativaSocio.setSocioId(socio);
-        cooperativaSocio.setFechaAfiliacion(new Date(System.currentTimeMillis()));
+        cooperativaSocio.setFechaAfiliacion(convertToDate(dto.getFechaAfiliacion()));
         cooperativaSocio.setEstado("pendiente");
         cooperativaSocio.setObservaciones("Solicitud de afiliación pendiente de aprobación");
         return cooperativaSocioRepository.save(cooperativaSocio);
     }
 
-    private IngenioMinero createIngenioMinero(ucb.edu.bo.sumajflow.dto.IngenioDto dto, Usuarios usuario) {
+    private IngenioMinero createIngenioMinero(IngenioDto dto, Usuarios usuario) {
         IngenioMinero ingenio = new IngenioMinero();
         ingenio.setRazonSocial(dto.getRazonSocial());
         ingenio.setNit(dto.getNit());
@@ -548,7 +631,7 @@ public class AuthBl {
         return ingenioMineroRepository.save(ingenio);
     }
 
-    private Planta createPlanta(ucb.edu.bo.sumajflow.dto.PlantaDto dto, IngenioMinero ingenio) {
+    private Planta createPlanta(PlantaDto dto, IngenioMinero ingenio) {
         Planta planta = new Planta();
         planta.setCupoMinimo(dto.getCupoMinimo());
         planta.setCapacidadProcesamiento(dto.getCapacidadProcesamiento());
@@ -565,7 +648,6 @@ public class AuthBl {
     }
 
     private PlantaMinerales createPlantaMineral(Planta planta, Integer mineralId) {
-        // Buscar mineral
         Minerales mineral = mineralesRepository.findById(mineralId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Mineral no encontrado con ID: " + mineralId));
@@ -577,7 +659,6 @@ public class AuthBl {
     }
 
     private ProcesosPlanta createPlantaProceso(Planta planta, Integer procesoId) {
-        // Buscar proceso
         Procesos proceso = procesosRepository.findById(procesoId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Proceso no encontrado con ID: " + procesoId));
@@ -608,7 +689,7 @@ public class AuthBl {
         return balanzaIngenioRepository.save(balanza);
     }
 
-    private AlmacenIngenio createAlmacenIngenio(ucb.edu.bo.sumajflow.dto.AlmacenDto dto, IngenioMinero ingenio) {
+    private AlmacenIngenio createAlmacenIngenio(AlmacenDto dto, IngenioMinero ingenio) {
         AlmacenIngenio almacen = new AlmacenIngenio();
         almacen.setNombre(dto.getNombre());
         almacen.setCapacidadMaxima(dto.getCapacidadMaxima());
@@ -623,7 +704,7 @@ public class AuthBl {
         return almacenIngenioRepository.save(almacen);
     }
 
-    private Comercializadora createComercializadora(ucb.edu.bo.sumajflow.dto.ComercializadoraDto dto, Usuarios usuario) {
+    private Comercializadora createComercializadora(ComercializadoraDto dto, Usuarios usuario) {
         Comercializadora comercializadora = new Comercializadora();
         comercializadora.setRazonSocial(dto.getRazonSocial());
         comercializadora.setNit(dto.getNit());
@@ -641,8 +722,7 @@ public class AuthBl {
         return comercializadoraRepository.save(comercializadora);
     }
 
-    private AlmacenComercializadora createAlmacenComercializadora(
-            ucb.edu.bo.sumajflow.dto.AlmacenDto dto, Comercializadora comercializadora) {
+    private AlmacenComercializadora createAlmacenComercializadora(AlmacenDto dto, Comercializadora comercializadora) {
         AlmacenComercializadora almacen = new AlmacenComercializadora();
         almacen.setNombre(dto.getNombre());
         almacen.setCapacidadMaxima(dto.getCapacidadMaxima());

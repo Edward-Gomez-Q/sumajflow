@@ -2,6 +2,8 @@ package ucb.edu.bo.sumajflow.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.LocalDate;
+
 /**
  * DTO para Socio con todos los campos necesarios para el onboarding
  */
@@ -12,6 +14,9 @@ public class SocioDto {
 
     @JsonProperty("carnet_afiliacion_url")
     private String carnetAfiliacionUrl;
+
+    @JsonProperty("fecha_afiliacion")
+    private LocalDate fechaAfiliacion;
 
     @JsonProperty("carnet_identidad_url")
     private String carnetIdentidadUrl;
@@ -25,8 +30,15 @@ public class SocioDto {
         return cooperativaId;
     }
 
+
     public void setCooperativaId(Integer cooperativaId) {
         this.cooperativaId = cooperativaId;
+    }
+    public LocalDate getFechaAfiliacion() {
+        return fechaAfiliacion;
+    }
+    public void setFechaAfiliacion(LocalDate fechaAfiliacion) {
+        this.fechaAfiliacion = fechaAfiliacion;
     }
 
     public String getCarnetAfiliacionUrl() {

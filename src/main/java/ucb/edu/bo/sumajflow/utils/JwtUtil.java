@@ -46,11 +46,12 @@ public class JwtUtil {
      * @param rol Rol del usuario
      * @return Token JWT
      */
-    public String generateAccessToken(Integer usuarioId, String correo, String rol) {
+    public String generateAccessToken(Integer usuarioId, String correo, String rol, Boolean aprobado) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("id", usuarioId);
         claims.put("correo", correo);
         claims.put("rol", rol);
+        claims.put("aprobado", aprobado);
         claims.put("type", "access");
 
         return Jwts.builder()
@@ -97,6 +98,11 @@ public class JwtUtil {
      */
     public Integer extractUsuarioId(String token) {
         return extractClaim(token, claims -> claims.get("id", Integer.class));
+    }
+
+    // Método para extraer el estado de aprobación
+    public Boolean extractAprobado(String token) {
+        return extractClaim(token, claims -> claims.get("aprobado", Boolean.class));
     }
 
     /**
