@@ -41,8 +41,6 @@ public class AuthBl {
     private final BalanzaComercializadoraRepository balanzaComercializadoraRepository;
     private final AlmacenComercializadoraRepository almacenComercializadoraRepository;
     private final JwtUtil jwtUtil;
-
-    // NUEVOS SERVICIOS
     private final AuditoriaBl auditoriaBl;
     private final NotificacionBl notificacionBl;
 
@@ -99,12 +97,12 @@ public class AuthBl {
     }
 
     /**
-     * Método de login
+     * Método de login con contexto HTTP
      */
     @Transactional
-    public LoginResponseDto login(String email, String password) {
+    public LoginResponseDto login(String email, String password, String ipOrigen, String userAgent) {
         // 1. Buscar usuario por correo
-        Usuarios usuario = usuariosRepository.findByCorreo((email))
+        Usuarios usuario = usuariosRepository.findByCorreo(email)
                 .orElseThrow(() -> new IllegalArgumentException("Credenciales inválidas"));
 
         // 2. Verificar contraseña
@@ -148,8 +146,8 @@ public class AuthBl {
                 persona.getSegundoApellido()
         );
 
-        // 7. Registrar en auditoría
-        auditoriaBl.registrarLogin(usuario);
+        // 7. Registrar en auditoría CON CONTEXTO HTTP
+        auditoriaBl.registrarLogin(usuario, ipOrigen, userAgent);
 
         // 8. Retornar respuesta
         return new LoginResponseDto(accessToken, refreshToken, userInfo);
@@ -222,7 +220,7 @@ public class AuthBl {
      * Método principal para procesar el onboarding según el tipo de usuario
      */
     @Transactional
-    public Usuarios processOnBoarding(OnBoardingDto onBoardingDto) {
+    public Usuarios processOnBoarding(OnBoardingDto onBoardingDto, String ipOrigen, String userAgent) {
         String tipoUsuario = onBoardingDto.getTipoUsuario();
 
         if (tipoUsuario == null) {
@@ -231,13 +229,13 @@ public class AuthBl {
 
         switch (tipoUsuario) {
             case "cooperativa":
-                return registerCooperativa(onBoardingDto);
+                return registerCooperativa(onBoardingDto, ipOrigen, userAgent);
             case "socio":
-                return registerSocio(onBoardingDto);
+                return registerSocio(onBoardingDto, ipOrigen, userAgent);
             case "ingenio":
-                return registerIngenio(onBoardingDto);
+                return registerIngenio(onBoardingDto, ipOrigen, userAgent);
             case "comercializadora":
-                return registerComercializadora(onBoardingDto);
+                return registerComercializadora(onBoardingDto, ipOrigen, userAgent);
             default:
                 throw new IllegalArgumentException("Tipo de usuario no válido: " + tipoUsuario);
         }
@@ -247,7 +245,7 @@ public class AuthBl {
      * Registra una cooperativa completa con todos sus datos relacionados
      */
     @Transactional
-    public Usuarios registerCooperativa(OnBoardingDto dto) {
+    public Usuarios registerCooperativa(OnBoardingDto dto, String ipOrigen, String userAgent) {
         // 1. Buscar o crear tipo de usuario
         TipoUsuario tipoUsuario = findOrCreateTipoUsuario("cooperativa");
 
@@ -279,10 +277,10 @@ public class AuthBl {
             createBalanzaCooperativa(dto.getCooperativa().getBalanza(), cooperativa);
         }
 
-        //  7. Registrar en auditoría
-        auditoriaBl.registrarRegistro(usuario, "cooperativa");
+        // 7. Registrar en auditoría CON CONTEXTO HTTP
+        auditoriaBl.registrarRegistro(usuario, "cooperativa", ipOrigen, userAgent);
 
-        //  8. Enviar notificación de bienvenida
+        // 8. Enviar notificación de bienvenida
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("cooperativaId", cooperativa.getId());
         metadata.put("razonSocial", cooperativa.getRazonSocial());
@@ -302,7 +300,7 @@ public class AuthBl {
      * Registra un socio completo con todos sus datos relacionados
      */
     @Transactional
-    public Usuarios registerSocio(OnBoardingDto dto) {
+    public Usuarios registerSocio(OnBoardingDto dto, String ipOrigen, String userAgent) {
         // 1. Buscar o crear tipo de usuario
         TipoUsuario tipoUsuario = findOrCreateTipoUsuario("socio");
 
@@ -318,10 +316,10 @@ public class AuthBl {
         // 5. Crear relación cooperativa-socio
         CooperativaSocio cooperativaSocio = createCooperativaSocio(dto.getSocio(), socio);
 
-        //  6. Registrar en auditoría
-        auditoriaBl.registrarRegistro(usuario, "socio");
+        // 6. Registrar en auditoría CON CONTEXTO HTTP
+        auditoriaBl.registrarRegistro(usuario, "socio", ipOrigen, userAgent);
 
-        //  7. Notificar a la cooperativa sobre nueva solicitud
+        // 7. Notificar a la cooperativa sobre nueva solicitud
         Integer cooperativaUsuarioId = cooperativaSocio.getCooperativaId().getUsuariosId().getId();
 
         Map<String, Object> metadataCooperativa = new HashMap<>();
@@ -347,7 +345,7 @@ public class AuthBl {
                 metadataCooperativa
         );
 
-        //  8. Notificar al socio sobre su solicitud enviada
+        // 8. Notificar al socio sobre su solicitud enviada
         Map<String, Object> metadataSocio = new HashMap<>();
         metadataSocio.put("socioId", socio.getId());
         metadataSocio.put("cooperativaId", cooperativaSocio.getCooperativaId().getId());
@@ -370,7 +368,7 @@ public class AuthBl {
      * Registra un ingenio minero completo con todos sus datos relacionados
      */
     @Transactional
-    public Usuarios registerIngenio(OnBoardingDto dto) {
+    public Usuarios registerIngenio(OnBoardingDto dto, String ipOrigen, String userAgent) {
         // 1. Buscar o crear tipo de usuario
         TipoUsuario tipoUsuario = findOrCreateTipoUsuario("ingenio");
 
@@ -414,10 +412,10 @@ public class AuthBl {
             });
         }
 
-        //  8. Registrar en auditoría
-        auditoriaBl.registrarRegistro(usuario, "ingenio");
+        // 8. Registrar en auditoría CON CONTEXTO HTTP
+        auditoriaBl.registrarRegistro(usuario, "ingenio", ipOrigen, userAgent);
 
-        //  9. Enviar notificación de bienvenida
+        // 9. Enviar notificación de bienvenida
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("ingenioId", ingenio.getId());
         metadata.put("razonSocial", ingenio.getRazonSocial());
@@ -440,7 +438,7 @@ public class AuthBl {
      * Registra una comercializadora completa con todos sus datos relacionados
      */
     @Transactional
-    public Usuarios registerComercializadora(OnBoardingDto dto) {
+    public Usuarios registerComercializadora(OnBoardingDto dto, String ipOrigen, String userAgent) {
         // 1. Buscar o crear tipo de usuario
         TipoUsuario tipoUsuario = findOrCreateTipoUsuario("comercializadora");
 
@@ -465,10 +463,10 @@ public class AuthBl {
             createBalanzaComercializadora(dto.getComercializadora().getBalanza(), comercializadora);
         }
 
-        //  7. Registrar en auditoría
-        auditoriaBl.registrarRegistro(usuario, "comercializadora");
+        // 7. Registrar en auditoría CON CONTEXTO HTTP
+        auditoriaBl.registrarRegistro(usuario, "comercializadora", ipOrigen, userAgent);
 
-        //  8. Enviar notificación de bienvenida
+        // 8. Enviar notificación de bienvenida
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("comercializadoraId", comercializadora.getId());
         metadata.put("razonSocial", comercializadora.getRazonSocial());
@@ -551,8 +549,7 @@ public class AuthBl {
         return sectoresRepository.save(sector);
     }
 
-    private SectoresCoordenadas createSectorCoordenada(
-            CoordenadaDto dto, Sectores sector) {
+    private SectoresCoordenadas createSectorCoordenada(CoordenadaDto dto, Sectores sector) {
         SectoresCoordenadas coordenada = new SectoresCoordenadas();
         coordenada.setOrden(dto.getOrden());
         coordenada.setLatitud(dto.getLatitud());
@@ -561,8 +558,7 @@ public class AuthBl {
         return sectoresCoordenadasRepository.save(coordenada);
     }
 
-    private BalanzaCooperativa createBalanzaCooperativa(
-            BalanzaDto dto, Cooperativa cooperativa) {
+    private BalanzaCooperativa createBalanzaCooperativa(BalanzaDto dto, Cooperativa cooperativa) {
         BalanzaCooperativa balanza = new BalanzaCooperativa();
         balanza.setNombre(dto.getNombre());
         balanza.setMarca(dto.getMarca());
@@ -737,8 +733,7 @@ public class AuthBl {
         return almacenComercializadoraRepository.save(almacen);
     }
 
-    private BalanzaComercializadora createBalanzaComercializadora(
-            BalanzaDto dto, Comercializadora comercializadora) {
+    private BalanzaComercializadora createBalanzaComercializadora(BalanzaDto dto, Comercializadora comercializadora) {
         BalanzaComercializadora balanza = new BalanzaComercializadora();
         balanza.setNombre(dto.getNombre());
         balanza.setMarca(dto.getMarca());

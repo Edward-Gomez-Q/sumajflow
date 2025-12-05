@@ -1,10 +1,10 @@
-package ucb.edu.bo.sumajflow.controller;
+package ucb.edu.bo.sumajflow.controller.socio;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import ucb.edu.bo.sumajflow.bl.SocioBl;
+import ucb.edu.bo.sumajflow.bl.socio.SocioBl;
 import ucb.edu.bo.sumajflow.dto.socio.SocioEstadoDto;
 
 import java.util.HashMap;

@@ -1,79 +1,157 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.xml.bind.annotation.XmlRootElement;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.Date;
 
 /**
+ * Entidad de auditoría mejorada para cumplir con ISO/IEC 27001
+ * y garantizar trazabilidad completa en el sistema minero
  *
  * @author osval
  */
 @Entity
-@Table(name = "auditoria")
+@Table(name = "auditoria", indexes = {
+        @Index(name = "idx_auditoria_usuario", columnList = "usuarios_id"),
+        @Index(name = "idx_auditoria_tabla", columnList = "tabla_afectada"),
+        @Index(name = "idx_auditoria_fecha", columnList = "fecha_operacion"),
+        @Index(name = "idx_auditoria_accion", columnList = "accion"),
+        @Index(name = "idx_auditoria_criticidad", columnList = "nivel_criticidad"),
+        @Index(name = "idx_auditoria_registro", columnList = "tabla_afectada, registro_id")
+})
 @XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "Auditoria.findAll", query = "SELECT a FROM Auditoria a"),
-    @NamedQuery(name = "Auditoria.findById", query = "SELECT a FROM Auditoria a WHERE a.id = :id"),
-    @NamedQuery(name = "Auditoria.findByTablaAfectada", query = "SELECT a FROM Auditoria a WHERE a.tablaAfectada = :tablaAfectada"),
-    @NamedQuery(name = "Auditoria.findByAccion", query = "SELECT a FROM Auditoria a WHERE a.accion = :accion"),
-    @NamedQuery(name = "Auditoria.findByDescripcion", query = "SELECT a FROM Auditoria a WHERE a.descripcion = :descripcion"),
-    @NamedQuery(name = "Auditoria.findByFecha", query = "SELECT a FROM Auditoria a WHERE a.fecha = :fecha")})
 public class Auditoria implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Basic(optional = false)
     @Column(name = "id")
     private Integer id;
-    @Size(max = 100)
-    @Column(name = "tabla_afectada")
-    private String tablaAfectada;
-    @Size(max = 50)
-    @Column(name = "accion")
-    private String accion;
-    @Size(max = 2147483647)
-    @Column(name = "descripcion")
-    private String descripcion;
-    @Column(name = "fecha")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fecha;
+
+    // === Identificación del usuario y contexto ===
     @JoinColumn(name = "usuarios_id", referencedColumnName = "id")
     @ManyToOne(fetch = FetchType.LAZY)
     private Usuarios usuariosId;
 
+    @Size(max = 50)
+    @Column(name = "tipo_usuario", length = 50)
+    private String tipoUsuario;
+
+    // === Detalles de la operación ===
+    @Basic(optional = false)
+    @NotNull
+    @Size(min = 1, max = 100)
+    @Column(name = "tabla_afectada")
+    private String tablaAfectada;
+
+    @Basic(optional = false)
+    @NotNull
+    @Size(min = 1, max = 20)
+    @Column(name = "accion")
+    private String accion;
+
+    @Column(name = "registro_id")
+    private Integer registroId;
+
+    // === Información detallada del cambio ===
+    @Column(name = "datos_anteriores", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String datosAnteriores;
+
+    @Column(name = "datos_nuevos", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String datosNuevos;
+
+    @Column(name = "campos_modificados", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String camposModificados;
+
+    // === Contexto técnico y seguridad ===
+    @Size(max = 45)
+    @Column(name = "ip_origen", length = 45)
+    private String ipOrigen;
+
+    @Column(name = "user_agent", columnDefinition = "text")
+    private String userAgent;
+
+    @Size(max = 10)
+    @Column(name = "metodo_http", length = 10)
+    private String metodoHttp;
+
+    @Size(max = 255)
+    @Column(name = "endpoint", length = 255)
+    private String endpoint;
+
+    // === Trazabilidad temporal ===
+    @Basic(optional = false)
+    @NotNull
+    @Column(name = "fecha_operacion")
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date fechaOperacion;
+
+    // === Información adicional ===
+    @Column(name = "descripcion", columnDefinition = "text")
+    private String descripcion;
+
+    @Size(max = 20)
+    @Column(name = "nivel_criticidad", length = 20)
+    private String nivelCriticidad;
+
+    @Size(max = 50)
+    @Column(name = "modulo", length = 50)
+    private String modulo;
+
+    // === Indicadores de seguridad ===
+    @Column(name = "operacion_exitosa")
+    private Boolean operacionExitosa;
+
+    @Column(name = "mensaje_error", columnDefinition = "text")
+    private String mensajeError;
+
+    // === Constructores ===
     public Auditoria() {
+        this.fechaOperacion = new Date();
+        this.operacionExitosa = true;
+        this.nivelCriticidad = "MEDIO";
     }
 
     public Auditoria(Integer id) {
+        this();
         this.id = id;
     }
 
+    // === Getters y Setters ===
     public Integer getId() {
         return id;
     }
 
     public void setId(Integer id) {
         this.id = id;
+    }
+
+    public Usuarios getUsuariosId() {
+        return usuariosId;
+    }
+
+    public void setUsuariosId(Usuarios usuariosId) {
+        this.usuariosId = usuariosId;
+    }
+
+    public String getTipoUsuario() {
+        return tipoUsuario;
+    }
+
+    public void setTipoUsuario(String tipoUsuario) {
+        this.tipoUsuario = tipoUsuario;
     }
 
     public String getTablaAfectada() {
@@ -92,6 +170,78 @@ public class Auditoria implements Serializable {
         this.accion = accion;
     }
 
+    public Integer getRegistroId() {
+        return registroId;
+    }
+
+    public void setRegistroId(Integer registroId) {
+        this.registroId = registroId;
+    }
+
+    public String getDatosAnteriores() {
+        return datosAnteriores;
+    }
+
+    public void setDatosAnteriores(String datosAnteriores) {
+        this.datosAnteriores = datosAnteriores;
+    }
+
+    public String getDatosNuevos() {
+        return datosNuevos;
+    }
+
+    public void setDatosNuevos(String datosNuevos) {
+        this.datosNuevos = datosNuevos;
+    }
+
+    public String getCamposModificados() {
+        return camposModificados;
+    }
+
+    public void setCamposModificados(String camposModificados) {
+        this.camposModificados = camposModificados;
+    }
+
+    public String getIpOrigen() {
+        return ipOrigen;
+    }
+
+    public void setIpOrigen(String ipOrigen) {
+        this.ipOrigen = ipOrigen;
+    }
+
+    public String getUserAgent() {
+        return userAgent;
+    }
+
+    public void setUserAgent(String userAgent) {
+        this.userAgent = userAgent;
+    }
+
+    public String getMetodoHttp() {
+        return metodoHttp;
+    }
+
+    public void setMetodoHttp(String metodoHttp) {
+        this.metodoHttp = metodoHttp;
+    }
+
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
+    }
+
+    public Date getFechaOperacion() {
+        return fechaOperacion;
+    }
+
+    public void setFechaOperacion(Date fechaOperacion) {
+        this.fechaOperacion = fechaOperacion;
+    }
+
     public String getDescripcion() {
         return descripcion;
     }
@@ -100,20 +250,36 @@ public class Auditoria implements Serializable {
         this.descripcion = descripcion;
     }
 
-    public Date getFecha() {
-        return fecha;
+    public String getNivelCriticidad() {
+        return nivelCriticidad;
     }
 
-    public void setFecha(Date fecha) {
-        this.fecha = fecha;
+    public void setNivelCriticidad(String nivelCriticidad) {
+        this.nivelCriticidad = nivelCriticidad;
     }
 
-    public Usuarios getUsuariosId() {
-        return usuariosId;
+    public String getModulo() {
+        return modulo;
     }
 
-    public void setUsuariosId(Usuarios usuariosId) {
-        this.usuariosId = usuariosId;
+    public void setModulo(String modulo) {
+        this.modulo = modulo;
+    }
+
+    public Boolean getOperacionExitosa() {
+        return operacionExitosa;
+    }
+
+    public void setOperacionExitosa(Boolean operacionExitosa) {
+        this.operacionExitosa = operacionExitosa;
+    }
+
+    public String getMensajeError() {
+        return mensajeError;
+    }
+
+    public void setMensajeError(String mensajeError) {
+        this.mensajeError = mensajeError;
     }
 
     @Override
@@ -125,7 +291,6 @@ public class Auditoria implements Serializable {
 
     @Override
     public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
         if (!(object instanceof Auditoria)) {
             return false;
         }
@@ -140,5 +305,4 @@ public class Auditoria implements Serializable {
     public String toString() {
         return "ucb.edu.bo.sumajflow.entity.Auditoria[ id=" + id + " ]";
     }
-    
 }

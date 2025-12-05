@@ -53,6 +53,11 @@ public class Sectores implements Serializable {
     @Size(max = 10)
     @Column(name = "color")
     private String color;
+    @Basic(optional = false)
+    @NotNull
+    @Size(min = 1, max = 50)
+    @Column(name = "estado")
+    private String estado;
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "sectoresId", fetch = FetchType.LAZY)
     private List<SectoresCoordenadas> sectoresCoordenadasList;
     @JoinColumn(name = "cooperativa_id", referencedColumnName = "id")
@@ -95,6 +100,12 @@ public class Sectores implements Serializable {
 
     public void setColor(String color) {
         this.color = color;
+    }
+    public String getEstado() {
+        return estado;
+    }
+    public void setEstado(String estado) {
+        this.estado = estado;
     }
 
     @XmlTransient

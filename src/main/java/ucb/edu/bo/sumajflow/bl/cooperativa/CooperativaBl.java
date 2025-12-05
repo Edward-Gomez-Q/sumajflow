@@ -1,12 +1,13 @@
-package ucb.edu.bo.sumajflow.bl;
+package ucb.edu.bo.sumajflow.bl.cooperativa;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
+import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.socio.SocioAprobacionDto;
 import ucb.edu.bo.sumajflow.dto.socio.SocioResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.SociosPaginadosDto;
@@ -155,10 +156,16 @@ public class CooperativaBl {
     }
 
     /**
-     * Aprueba o rechaza una solicitud de socio
+     * Aprueba o rechaza una solicitud de socio CON CONTEXTO HTTP
      */
     @Transactional
-    public void procesarSolicitud(Integer usuarioId, SocioAprobacionDto dto) {
+    public void procesarSolicitud(
+            Integer usuarioId,
+            SocioAprobacionDto dto,
+            String ipOrigen,
+            String metodoHttp,
+            String endpoint
+    ) {
         // 1. Validar datos
         if (dto.getEstado() == null ||
                 (!dto.getEstado().equals("aprobado") && !dto.getEstado().equals("rechazado"))) {
@@ -193,33 +200,30 @@ public class CooperativaBl {
         socio.setEstado(dto.getEstado());
         socioRepository.save(socio);
 
-        // 8. Obtener datos para notificación
+        // 8. Obtener datos para auditoría y notificación
         Usuarios usuarioCooperativa = usuariosRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
         Persona personaSocio = personaRepository.findByUsuariosId(socio.getUsuariosId())
                 .orElseThrow(() -> new IllegalArgumentException("Datos de persona no encontrados"));
 
-        // 9. Registrar en auditoría
-        String descripcion = String.format(
-                "Solicitud de %s %s %s. %s",
-                personaSocio.getNombres(),
-                personaSocio.getPrimerApellido(),
-                dto.getEstado().equals("aprobado") ? "aprobada" : "rechazada",
-                dto.getObservaciones() != null ? dto.getObservaciones() : ""
-        );
+        String nombreCompleto = personaSocio.getNombres() + " " + personaSocio.getPrimerApellido();
 
-        auditoriaBl.registrarAprobacion(
+        // 9. Registrar en auditoría CON CONTEXTO COMPLETO
+        auditoriaBl.registrarAprobacionSocio(
                 usuarioCooperativa,
-                "cooperativa_socio",
-                "Solicitud ID: " + cooperativaSocio.getId(),
+                cooperativaSocio.getId(),
+                nombreCompleto,
                 dto.getEstado(),
-                descripcion
+                dto.getObservaciones(),
+                ipOrigen,
+                metodoHttp,
+                endpoint
         );
 
         // 10. Enviar notificación al socio
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("tipo", "aprobacion_socio"); // Para identificar el tipo de notificación
+        metadata.put("tipo", "aprobacion_socio");
         metadata.put("socioId", socio.getId());
         metadata.put("cooperativaId", cooperativa.getId());
         metadata.put("cooperativaNombre", cooperativa.getRazonSocial());
@@ -329,11 +333,8 @@ public class CooperativaBl {
             );
             dto.setCi(persona.getCi());
 
-            // Convertir java.util.Date a java.sql.Date si es necesario
             if (persona.getFechaNacimiento() != null) {
-                dto.setFechaNacimiento(
-                        persona.getFechaNacimiento()
-                );
+                dto.setFechaNacimiento(persona.getFechaNacimiento());
             }
 
             dto.setNumeroCelular(persona.getNumeroCelular());
@@ -348,9 +349,7 @@ public class CooperativaBl {
 
         // Información de cooperativa-socio
         if (cooperativaSocio.getFechaAfiliacion() != null) {
-            dto.setFechaAfiliacion(
-                    cooperativaSocio.getFechaAfiliacion()
-            );
+            dto.setFechaAfiliacion(cooperativaSocio.getFechaAfiliacion());
         }
         dto.setObservaciones(cooperativaSocio.getObservaciones());
 

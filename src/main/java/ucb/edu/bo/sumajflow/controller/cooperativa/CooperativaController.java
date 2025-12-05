@@ -1,13 +1,15 @@
-package ucb.edu.bo.sumajflow.controller;
+package ucb.edu.bo.sumajflow.controller.cooperativa;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import ucb.edu.bo.sumajflow.bl.CooperativaBl;
+import ucb.edu.bo.sumajflow.bl.cooperativa.CooperativaBl;
 import ucb.edu.bo.sumajflow.dto.socio.SocioAprobacionDto;
 import ucb.edu.bo.sumajflow.dto.socio.SocioResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.SociosPaginadosDto;
+import ucb.edu.bo.sumajflow.utils.HttpUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -142,7 +144,8 @@ public class CooperativaController {
     @PutMapping("/socios/procesar")
     public ResponseEntity<Map<String, Object>> procesarSolicitud(
             Authentication authentication,
-            @RequestBody SocioAprobacionDto aprobacionDto
+            @RequestBody SocioAprobacionDto aprobacionDto,
+            HttpServletRequest request
     ) {
         Map<String, Object> response = new HashMap<>();
 
@@ -162,8 +165,19 @@ public class CooperativaController {
 
             Integer usuarioId = (Integer) authentication.getDetails();
 
-            // Procesar solicitud
-            cooperativaBl.procesarSolicitud(usuarioId, aprobacionDto);
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String metodoHttp = request.getMethod();
+            String endpoint = request.getRequestURI();
+
+            // Procesar solicitud CON CONTEXTO
+            cooperativaBl.procesarSolicitud(
+                    usuarioId,
+                    aprobacionDto,
+                    ipOrigen,
+                    metodoHttp,
+                    endpoint
+            );
 
             response.put("success", true);
             response.put("message", "Solicitud procesada exitosamente");

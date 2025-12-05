@@ -65,6 +65,9 @@ public class Minas implements Serializable {
     @NotNull
     @Column(name = "longitud")
     private BigDecimal longitud;
+    @Size(max = 50)
+    @Column(name = "estado")
+    private String estado;
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "minasId", fetch = FetchType.LAZY)
     private List<Lotes> lotesList;
     @JoinColumn(name = "sectores_id", referencedColumnName = "id")
@@ -126,6 +129,13 @@ public class Minas implements Serializable {
 
     public void setLongitud(BigDecimal longitud) {
         this.longitud = longitud;
+    }
+
+    public String getEstado() {
+        return estado;
+    }
+    public void setEstado(String estado) {
+        this.estado = estado;
     }
 
     @XmlTransient

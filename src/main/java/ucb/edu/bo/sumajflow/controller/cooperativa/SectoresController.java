@@ -1,12 +1,14 @@
-// src/main/java/ucb/edu/bo/sumajflow/controller/SectoresController.java
-package ucb.edu.bo.sumajflow.controller;
+// src/main/java/ucb/edu/bo/sumajflow/controller/cooperativa/SectoresController.java
+package ucb.edu.bo.sumajflow.controller.cooperativa;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ucb.edu.bo.sumajflow.bl.SectoresBl;
+import ucb.edu.bo.sumajflow.bl.cooperativa.SectoresBl;
 import ucb.edu.bo.sumajflow.dto.cooperativa.SectorCreateDto;
 import ucb.edu.bo.sumajflow.dto.cooperativa.SectorResponseDto;
+import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
 import java.util.HashMap;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/sectores")
+@RequestMapping("/cooperativa/sectores")
 @CrossOrigin(origins = "*")
 public class SectoresController {
 
@@ -28,7 +30,7 @@ public class SectoresController {
 
     /**
      * Obtener todos los sectores de la cooperativa del usuario autenticado
-     * GET /api/sectores
+     * GET /cooperativa/sectores
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getSectores(
@@ -59,7 +61,7 @@ public class SectoresController {
 
     /**
      * Obtener un sector por ID
-     * GET /api/sectores/{id}
+     * GET /cooperativa/sectores/{id}
      */
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getSector(
@@ -91,18 +93,31 @@ public class SectoresController {
 
     /**
      * Crear un nuevo sector
-     * POST /api/sectores
+     * POST /cooperativa/sectores
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> createSector(
             @RequestBody SectorCreateDto dto,
-            @RequestHeader("Authorization") String token
+            @RequestHeader("Authorization") String token,
+            HttpServletRequest request
     ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            SectorResponseDto sector = sectoresBl.createSector(dto, usuarioId);
+
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String metodoHttp = request.getMethod();
+            String endpoint = request.getRequestURI();
+
+            SectorResponseDto sector = sectoresBl.createSector(
+                    dto,
+                    usuarioId,
+                    ipOrigen,
+                    metodoHttp,
+                    endpoint
+            );
 
             response.put("success", true);
             response.put("message", "Sector creado exitosamente");
@@ -124,19 +139,33 @@ public class SectoresController {
 
     /**
      * Actualizar un sector existente
-     * PUT /api/sectores/{id}
+     * PUT /cooperativa/sectores/{id}
      */
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updateSector(
             @PathVariable Integer id,
             @RequestBody SectorCreateDto dto,
-            @RequestHeader("Authorization") String token
+            @RequestHeader("Authorization") String token,
+            HttpServletRequest request
     ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            SectorResponseDto sector = sectoresBl.updateSector(id, dto, usuarioId);
+
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String metodoHttp = request.getMethod();
+            String endpoint = request.getRequestURI();
+
+            SectorResponseDto sector = sectoresBl.updateSector(
+                    id,
+                    dto,
+                    usuarioId,
+                    ipOrigen,
+                    metodoHttp,
+                    endpoint
+            );
 
             response.put("success", true);
             response.put("message", "Sector actualizado exitosamente");
@@ -158,18 +187,31 @@ public class SectoresController {
 
     /**
      * Eliminar un sector
-     * DELETE /api/sectores/{id}
+     * DELETE /cooperativa/sectores/{id}
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deleteSector(
             @PathVariable Integer id,
-            @RequestHeader("Authorization") String token
+            @RequestHeader("Authorization") String token,
+            HttpServletRequest request
     ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            sectoresBl.deleteSector(id, usuarioId);
+
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String metodoHttp = request.getMethod();
+            String endpoint = request.getRequestURI();
+
+            sectoresBl.deleteSector(
+                    id,
+                    usuarioId,
+                    ipOrigen,
+                    metodoHttp,
+                    endpoint
+            );
 
             response.put("success", true);
             response.put("message", "Sector eliminado exitosamente");
@@ -190,7 +232,7 @@ public class SectoresController {
 
     /**
      * Obtener estadísticas de sectores
-     * GET /api/sectores/estadisticas
+     * GET /cooperativa/sectores/estadisticas
      */
     @GetMapping("/estadisticas")
     public ResponseEntity<Map<String, Object>> getEstadisticas(

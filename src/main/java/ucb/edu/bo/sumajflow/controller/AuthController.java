@@ -1,5 +1,6 @@
 package ucb.edu.bo.sumajflow.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -8,6 +9,7 @@ import ucb.edu.bo.sumajflow.dto.login.LoginRequestDto;
 import ucb.edu.bo.sumajflow.dto.login.LoginResponseDto;
 import ucb.edu.bo.sumajflow.dto.OnBoardingDto;
 import ucb.edu.bo.sumajflow.entity.Usuarios;
+import ucb.edu.bo.sumajflow.utils.HttpUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,13 +30,22 @@ public class AuthController {
      * POST /auth/login
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequestDto loginRequest) {
+    public ResponseEntity<Map<String, Object>> login(
+            @RequestBody LoginRequestDto loginRequest,
+            HttpServletRequest request
+    ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String userAgent = HttpUtils.obtenerUserAgent(request);
+
             LoginResponseDto loginResponse = authBl.login(
                     loginRequest.getEmail(),
-                    loginRequest.getPassword()
+                    loginRequest.getPassword(),
+                    ipOrigen,
+                    userAgent
             );
 
             response.put("success", true);
@@ -103,7 +114,10 @@ public class AuthController {
      * POST /auth/register
      */
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody OnBoardingDto onBoardingDto) {
+    public ResponseEntity<Map<String, Object>> register(
+            @RequestBody OnBoardingDto onBoardingDto,
+            HttpServletRequest request
+    ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
@@ -114,8 +128,12 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(response);
             }
 
+            // Extraer contexto HTTP
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+            String userAgent = HttpUtils.obtenerUserAgent(request);
+
             // Procesar el onboarding según el tipo de usuario
-            Usuarios usuario = authBl.processOnBoarding(onBoardingDto);
+            Usuarios usuario = authBl.processOnBoarding(onBoardingDto, ipOrigen, userAgent);
 
             response.put("success", true);
             response.put("message", "Usuario registrado exitosamente");

@@ -58,6 +58,11 @@ public class Lotes implements Serializable {
     @Basic(optional = false)
     @NotNull
     @Size(min = 1, max = 50)
+    @Column(name = "tipo_mineral")
+    private String tipoMineral;
+    @Basic(optional = false)
+    @NotNull
+    @Size(min = 1, max = 50)
     @Column(name = "estado")
     private String estado;
     @OneToMany(cascade = CascadeType.ALL, mappedBy = "lotesId", fetch = FetchType.LAZY)
@@ -108,6 +113,13 @@ public class Lotes implements Serializable {
 
     public void setTipoOperacion(String tipoOperacion) {
         this.tipoOperacion = tipoOperacion;
+    }
+
+    public String getTipoMineral() {
+        return tipoMineral;
+    }
+    public void setTipoMineral(String tipoMineral) {
+        this.tipoMineral = tipoMineral;
     }
 
     public String getEstado() {
