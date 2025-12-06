@@ -9,6 +9,7 @@ import ucb.edu.bo.sumajflow.entity.Cooperativa;
 import ucb.edu.bo.sumajflow.entity.CooperativaSocio;
 import ucb.edu.bo.sumajflow.entity.Socio;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -86,4 +87,55 @@ public interface CooperativaSocioRepository extends JpaRepository<CooperativaSoc
      * Cuenta socios por cooperativa y estado
      */
     Long countByCooperativaIdAndEstado(Cooperativa cooperativa, String estado);
+
+    /**
+     * Encuentra la relación cooperativa-socio donde el socio esté en un estado específico
+     */
+    @Query("SELECT cs FROM CooperativaSocio cs WHERE cs.socioId = :socio AND cs.estado = :estado")
+    Optional<CooperativaSocio> findBySocioIdAndEstado(
+            @Param("socio") Socio socio,
+            @Param("estado") String estado
+    );
+
+    /**
+     * Verifica si un socio está aprobado en una cooperativa específica
+     */
+    @Query("SELECT CASE WHEN COUNT(cs) > 0 THEN true ELSE false END " +
+            "FROM CooperativaSocio cs WHERE cs.socioId = :socio " +
+            "AND cs.cooperativaId = :cooperativa AND cs.estado = 'aprobado'")
+    boolean isSocioAprobadoEnCooperativa(
+            @Param("socio") Socio socio,
+            @Param("cooperativa") Cooperativa cooperativa
+    );
+
+    /**
+     * Obtiene la cooperativa donde un socio está aprobado
+     */
+    @Query("SELECT cs.cooperativaId FROM CooperativaSocio cs " +
+            "WHERE cs.socioId = :socio AND cs.estado = 'aprobado'")
+    Optional<Cooperativa> findCooperativaByApprovedSocio(@Param("socio") Socio socio);
+
+    /**
+     * Obtiene todos los socios aprobados de una cooperativa
+     */
+    @Query("SELECT cs FROM CooperativaSocio cs WHERE cs.cooperativaId = :cooperativa AND cs.estado = 'aprobado'")
+    List<CooperativaSocio> findApprovedSociosByCooperativa(@Param("cooperativa") Cooperativa cooperativa);
+
+    /**
+     * Obtiene todos los socios pendientes de aprobación de una cooperativa
+     */
+    @Query("SELECT cs FROM CooperativaSocio cs WHERE cs.cooperativaId = :cooperativa AND cs.estado = 'pendiente'")
+    List<CooperativaSocio> findPendingSociosByCooperativa(@Param("cooperativa") Cooperativa cooperativa);
+
+    /**
+     * Cuenta socios aprobados en una cooperativa
+     */
+    @Query("SELECT COUNT(cs) FROM CooperativaSocio cs WHERE cs.cooperativaId = :cooperativa AND cs.estado = 'aprobado'")
+    long countApprovedSociosByCooperativa(@Param("cooperativa") Cooperativa cooperativa);
+
+    /**
+     * Encuentra todas las relaciones de un socio (para ver su historial)
+     */
+    @Query("SELECT cs FROM CooperativaSocio cs WHERE cs.socioId = :socio ORDER BY cs.fechaAfiliacion DESC")
+    List<CooperativaSocio> findAllBySocio(@Param("socio") Socio socio);
 }

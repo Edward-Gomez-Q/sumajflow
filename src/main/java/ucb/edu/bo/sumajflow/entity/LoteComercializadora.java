@@ -1,103 +1,64 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.Table;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import java.io.Serializable;
+import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/**
- *
- * @author osval
- */
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "lote_comercializadora")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "LoteComercializadora.findAll", query = "SELECT l FROM LoteComercializadora l"),
-    @NamedQuery(name = "LoteComercializadora.findById", query = "SELECT l FROM LoteComercializadora l WHERE l.id = :id")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {"comercializadoraId", "lotesId"})
 public class LoteComercializadora implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @JoinColumn(name = "comercializadora_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    @Size(max = 50)
+    @Column(name = "estado", length = 50)
+    private String estado;
+
+    @Column(name = "fecha_aprobacion")
+    private LocalDateTime fechaAprobacion;
+
+    @Column(name = "observaciones", columnDefinition = "text")
+    private String observaciones;
+
+    // Auditoría
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "comercializadora_id", nullable = false)
     private Comercializadora comercializadoraId;
-    @JoinColumn(name = "lotes_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "lotes_id", nullable = false)
     private Lotes lotesId;
 
-    public LoteComercializadora() {
-    }
-
-    public LoteComercializadora(Integer id) {
-        this.id = id;
-    }
-
-    public Integer getId() {
-        return id;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Comercializadora getComercializadoraId() {
-        return comercializadoraId;
-    }
-
-    public void setComercializadoraId(Comercializadora comercializadoraId) {
-        this.comercializadoraId = comercializadoraId;
-    }
-
-    public Lotes getLotesId() {
-        return lotesId;
-    }
-
-    public void setLotesId(Lotes lotesId) {
-        this.lotesId = lotesId;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof LoteComercializadora)) {
-            return false;
+    @PrePersist
+    protected void onCreate() {
+        if (estado == null) {
+            estado = "pendiente";
         }
-        LoteComercializadora other = (LoteComercializadora) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
-        }
-        return true;
     }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.LoteComercializadora[ id=" + id + " ]";
-    }
-    
 }

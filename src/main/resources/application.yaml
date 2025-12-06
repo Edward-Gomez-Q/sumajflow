@@ -15,7 +15,7 @@ spring:
   # DATABASE CONFIGURATION
   # ===============================
   datasource:
-    url: jdbc:postgresql://localhost:5432/suma
+    url: jdbc:postgresql://localhost:5432/sumaj
     username: postgres
     password: 12345678
     driver-class-name: org.postgresql.Driver

@@ -1,151 +1,68 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import java.io.Serializable;
-import java.util.Date;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/**
- *
- * @author osval
- */
+import java.io.Serializable;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "cooperativa_socio")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "CooperativaSocio.findAll", query = "SELECT c FROM CooperativaSocio c"),
-    @NamedQuery(name = "CooperativaSocio.findById", query = "SELECT c FROM CooperativaSocio c WHERE c.id = :id"),
-    @NamedQuery(name = "CooperativaSocio.findByFechaAfiliacion", query = "SELECT c FROM CooperativaSocio c WHERE c.fechaAfiliacion = :fechaAfiliacion"),
-    @NamedQuery(name = "CooperativaSocio.findByEstado", query = "SELECT c FROM CooperativaSocio c WHERE c.estado = :estado"),
-    @NamedQuery(name = "CooperativaSocio.findByObservaciones", query = "SELECT c FROM CooperativaSocio c WHERE c.observaciones = :observaciones")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {"cooperativaId", "socioId"})
 public class CooperativaSocio implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @Basic(optional = false)
+
     @NotNull
-    @Column(name = "fecha_afiliacion")
-    @Temporal(TemporalType.DATE)
-    private Date fechaAfiliacion;
+    @Column(name = "fecha_afiliacion", nullable = false)
+    private LocalDate fechaAfiliacion;
+
     @Size(max = 50)
-    @Column(name = "estado")
+    @Column(name = "estado", length = 50)
     private String estado;
+
     @Size(max = 255)
-    @Column(name = "observaciones")
+    @Column(name = "observaciones", length = 255)
     private String observaciones;
-    @JoinColumn(name = "cooperativa_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    // Auditoría
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "cooperativa_id", nullable = false)
     private Cooperativa cooperativaId;
-    @JoinColumn(name = "socio_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "socio_id", nullable = false)
     private Socio socioId;
 
-    public CooperativaSocio() {
-    }
-
-    public CooperativaSocio(Integer id) {
-        this.id = id;
-    }
-
-    public CooperativaSocio(Integer id, Date fechaAfiliacion) {
-        this.id = id;
-        this.fechaAfiliacion = fechaAfiliacion;
-    }
-
-    public Integer getId() {
-        return id;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Date getFechaAfiliacion() {
-        return fechaAfiliacion;
-    }
-
-    public void setFechaAfiliacion(Date fechaAfiliacion) {
-        this.fechaAfiliacion = fechaAfiliacion;
-    }
-
-    public String getEstado() {
-        return estado;
-    }
-
-    public void setEstado(String estado) {
-        this.estado = estado;
-    }
-
-    public String getObservaciones() {
-        return observaciones;
-    }
-
-    public void setObservaciones(String observaciones) {
-        this.observaciones = observaciones;
-    }
-
-    public Cooperativa getCooperativaId() {
-        return cooperativaId;
-    }
-
-    public void setCooperativaId(Cooperativa cooperativaId) {
-        this.cooperativaId = cooperativaId;
-    }
-
-    public Socio getSocioId() {
-        return socioId;
-    }
-
-    public void setSocioId(Socio socioId) {
-        this.socioId = socioId;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof CooperativaSocio)) {
-            return false;
+    @PrePersist
+    protected void onCreate() {
+        if (estado == null) {
+            estado = "pendiente";
         }
-        CooperativaSocio other = (CooperativaSocio) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
-        }
-        return true;
     }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.CooperativaSocio[ id=" + id + " ]";
-    }
-    
 }

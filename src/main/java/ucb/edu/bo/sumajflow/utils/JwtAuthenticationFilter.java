@@ -42,10 +42,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Integer usuarioId = jwtUtil.extractUsuarioId(token);
                 Boolean aprobado = jwtUtil.extractAprobado(token);
 
-                // ⚡ VALIDACIÓN: Si es socio no aprobado, bloquear acceso (excepto ciertos endpoints)
+                //  Si es socio no aprobad
                 if ("socio".equalsIgnoreCase(rol) && !Boolean.TRUE.equals(aprobado)) {
                     String uri = request.getRequestURI();
-                    // Permitir acceso a /socio/estado para que pueda ver su estado
                     if (!uri.startsWith("/auth/") &&
                             !uri.startsWith("/public/") &&
                             !uri.equals("/socio/estado") &&

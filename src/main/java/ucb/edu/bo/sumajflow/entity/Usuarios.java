@@ -1,220 +1,115 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlTransient;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.io.Serializable;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- *
- * @author osval
- */
 @Entity
 @Table(name = "usuarios")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "Usuarios.findAll", query = "SELECT u FROM Usuarios u"),
-    @NamedQuery(name = "Usuarios.findById", query = "SELECT u FROM Usuarios u WHERE u.id = :id"),
-    @NamedQuery(name = "Usuarios.findByCorreo", query = "SELECT u FROM Usuarios u WHERE u.correo = :correo"),
-    @NamedQuery(name = "Usuarios.findByContrasena", query = "SELECT u FROM Usuarios u WHERE u.contrasena = :contrasena")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {
+        "tipoUsuarioId",
+        "persona",
+        "cooperativa",
+        "socio",
+        "ingenioMinero",
+        "comercializadora",
+        "transportista",
+        "auditoriaList",
+        "notificacionesList"
+})
 public class Usuarios implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @Basic(optional = false)
+
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "correo")
+    @Column(name = "correo", nullable = false, length = 50, unique = true)
     private String correo;
-    @Basic(optional = false)
+
     @NotNull
     @Size(min = 1, max = 250)
-    @Column(name = "contrasena")
+    @Column(name = "contrasena", nullable = false, length = 250)
     private String contrasena;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Comercializadora> comercializadoraList;
-    @JoinColumn(name = "tipo_usuario_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    // Auditoría
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "tipo_usuario_id", nullable = false)
     private TipoUsuario tipoUsuarioId;
-    @OneToMany(mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Auditoria> auditoriaList;
-    @OneToMany(mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Notificacion> notificacionList;
 
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Transportista> transportistaList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Cooperativa> cooperativaList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Persona> personaList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<Socio> socioList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "usuariosId", fetch = FetchType.LAZY)
-    private List<IngenioMinero> ingenioMineroList;
+    // Relaciones uno-a-uno (cada usuario puede tener solo una de estas)
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Persona persona;
 
-    public Usuarios() {
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Cooperativa cooperativa;
+
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Socio socio;
+
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private IngenioMinero ingenioMinero;
+
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Comercializadora comercializadora;
+
+    @OneToOne(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Transportista transportista;
+
+    // Otras relaciones
+    @OneToMany(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Auditoria> auditoriaList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "usuariosId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<Notificacion> notificacionesList = new ArrayList<>();
+
+    // Métodos helper
+    public void addAuditoria(Auditoria auditoria) {
+        auditoriaList.add(auditoria);
+        auditoria.setUsuariosId(this);
     }
 
-    public Usuarios(Integer id) {
-        this.id = id;
+    public void removeAuditoria(Auditoria auditoria) {
+        auditoriaList.remove(auditoria);
+        auditoria.setUsuariosId(null);
     }
 
-    public Usuarios(Integer id, String correo, String contrasena) {
-        this.id = id;
-        this.correo = correo;
-        this.contrasena = contrasena;
+    public void addNotificacion(Notificacion notificacion) {
+        notificacionesList.add(notificacion);
+        notificacion.setUsuariosId(this);
     }
 
-    public Integer getId() {
-        return id;
+    public void removeNotificacion(Notificacion notificacion) {
+        notificacionesList.remove(notificacion);
+        notificacion.setUsuariosId(null);
     }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public String getCorreo() {
-        return correo;
-    }
-
-    public void setCorreo(String correo) {
-        this.correo = correo;
-    }
-
-    public String getContrasena() {
-        return contrasena;
-    }
-
-    public void setContrasena(String contrasena) {
-        this.contrasena = contrasena;
-    }
-
-    @XmlTransient
-    public List<Comercializadora> getComercializadoraList() {
-        return comercializadoraList;
-    }
-
-    public void setComercializadoraList(List<Comercializadora> comercializadoraList) {
-        this.comercializadoraList = comercializadoraList;
-    }
-
-    public TipoUsuario getTipoUsuarioId() {
-        return tipoUsuarioId;
-    }
-
-    public void setTipoUsuarioId(TipoUsuario tipoUsuarioId) {
-        this.tipoUsuarioId = tipoUsuarioId;
-    }
-
-    @XmlTransient
-    public List<Auditoria> getAuditoriaList() {
-        return auditoriaList;
-    }
-
-    public void setAuditoriaList(List<Auditoria> auditoriaList) {
-        this.auditoriaList = auditoriaList;
-    }
-
-    @XmlTransient
-    public List<Notificacion> getNotificacionList() {
-        return notificacionList;
-    }
-    public void setNotificacionList(List<Notificacion> notificacionList) {
-        this.notificacionList = notificacionList;
-    }
-
-    @XmlTransient
-    public List<Transportista> getTransportistaList() {
-        return transportistaList;
-    }
-
-    public void setTransportistaList(List<Transportista> transportistaList) {
-        this.transportistaList = transportistaList;
-    }
-
-    @XmlTransient
-    public List<Cooperativa> getCooperativaList() {
-        return cooperativaList;
-    }
-
-    public void setCooperativaList(List<Cooperativa> cooperativaList) {
-        this.cooperativaList = cooperativaList;
-    }
-
-    @XmlTransient
-    public List<Persona> getPersonaList() {
-        return personaList;
-    }
-
-    public void setPersonaList(List<Persona> personaList) {
-        this.personaList = personaList;
-    }
-
-    @XmlTransient
-    public List<Socio> getSocioList() {
-        return socioList;
-    }
-
-    public void setSocioList(List<Socio> socioList) {
-        this.socioList = socioList;
-    }
-
-    @XmlTransient
-    public List<IngenioMinero> getIngenioMineroList() {
-        return ingenioMineroList;
-    }
-
-    public void setIngenioMineroList(List<IngenioMinero> ingenioMineroList) {
-        this.ingenioMineroList = ingenioMineroList;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof Usuarios)) {
-            return false;
-        }
-        Usuarios other = (Usuarios) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.Usuarios[ id=" + id + " ]";
-    }
-    
 }

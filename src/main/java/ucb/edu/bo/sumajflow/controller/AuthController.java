@@ -37,7 +37,6 @@ public class AuthController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            // Extraer contexto HTTP
             String ipOrigen = HttpUtils.obtenerIpCliente(request);
             String userAgent = HttpUtils.obtenerUserAgent(request);
 

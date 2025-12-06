@@ -2,6 +2,8 @@ package ucb.edu.bo.sumajflow.bl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,29 +13,21 @@ import ucb.edu.bo.sumajflow.entity.Usuarios;
 import ucb.edu.bo.sumajflow.repository.NotificacionRepository;
 import ucb.edu.bo.sumajflow.repository.UsuariosRepository;
 
-import java.util.Date;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class NotificacionBl {
 
     private final NotificacionRepository notificacionRepository;
     private final UsuariosRepository usuariosRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
-
-    public NotificacionBl(
-            NotificacionRepository notificacionRepository,
-            UsuariosRepository usuariosRepository,
-            SimpMessagingTemplate messagingTemplate,
-            ObjectMapper objectMapper) {
-        this.notificacionRepository = notificacionRepository;
-        this.usuariosRepository = usuariosRepository;
-        this.messagingTemplate = messagingTemplate;
-        this.objectMapper = objectMapper;
-    }
 
     /**
      * Crea y envía una notificación en tiempo real
@@ -46,30 +40,27 @@ public class NotificacionBl {
             String mensaje,
             Map<String, Object> metadata) {
 
+        log.info("Creando notificación - Usuario ID: {}, Tipo: {}", usuarioId, tipo);
+
         Usuarios usuario = usuariosRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
-        Notificacion notificacion = new Notificacion();
-        notificacion.setUsuariosId(usuario);
-        notificacion.setTipo(tipo);
-        notificacion.setTitulo(titulo);
-        notificacion.setMensaje(mensaje);
-        notificacion.setLeido(false);
-        notificacion.setFechaCreacion(new Date());
-
-        // Convertir metadata a JSON string
-        if (metadata != null && !metadata.isEmpty()) {
-            try {
-                notificacion.setMetadata(objectMapper.writeValueAsString(metadata));
-            } catch (JsonProcessingException e) {
-                System.err.println("Error al serializar metadata: " + e.getMessage());
-            }
-        }
+        Notificacion notificacion = Notificacion.builder()
+                .usuariosId(usuario)
+                .tipo(tipo)
+                .titulo(titulo)
+                .mensaje(mensaje)
+                .leido(false)
+                .fechaCreacion(LocalDateTime.now())
+                .metadata(convertirMetadataAJson(metadata))
+                .build();
 
         notificacion = notificacionRepository.save(notificacion);
 
         // Enviar por WebSocket en tiempo real
         enviarNotificacionWebSocket(usuario.getId(), convertirADto(notificacion));
+
+        log.info("Notificación creada y enviada - ID: {}", notificacion.getId());
     }
 
     /**
@@ -82,8 +73,9 @@ public class NotificacionBl {
                     "/queue/notificaciones",
                     dto
             );
+            log.debug("Notificación enviada por WebSocket - Usuario ID: {}", usuarioId);
         } catch (Exception e) {
-            System.err.println("Error al enviar notificación por WebSocket: " + e.getMessage());
+            log.error("Error al enviar notificación por WebSocket - Usuario ID: {}", usuarioId, e);
         }
     }
 
@@ -92,17 +84,14 @@ public class NotificacionBl {
      */
     @Transactional(readOnly = true)
     public List<NotificacionDto> obtenerNotificaciones(Integer usuarioId, Boolean soloNoLeidas) {
+        log.debug("Obteniendo notificaciones - Usuario ID: {}, Solo no leídas: {}", usuarioId, soloNoLeidas);
+
         Usuarios usuario = usuariosRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
 
-        List<Notificacion> notificaciones;
-        if (Boolean.TRUE.equals(soloNoLeidas)) {
-            notificaciones = notificacionRepository
-                    .findByUsuariosIdAndLeidoOrderByFechaCreacionDesc(usuario, false);
-        } else {
-            notificaciones = notificacionRepository
-                    .findTop20ByUsuariosIdOrderByFechaCreacionDesc(usuario);
-        }
+        List<Notificacion> notificaciones = Boolean.TRUE.equals(soloNoLeidas)
+                ? notificacionRepository.findByUsuariosIdAndLeidoOrderByFechaCreacionDesc(usuario, false)
+                : notificacionRepository.findTop20ByUsuariosIdOrderByFechaCreacionDesc(usuario);
 
         return notificaciones.stream()
                 .map(this::convertirADto)
@@ -111,21 +100,24 @@ public class NotificacionBl {
 
     /**
      * Marca una notificación como leída
-     *  VALIDACIÓN DE SEGURIDAD: Verifica que la notificación pertenezca al usuario
+     * ⚠️ VALIDACIÓN DE SEGURIDAD: Verifica que la notificación pertenezca al usuario
      */
     @Transactional
     public void marcarComoLeida(Integer notificacionId, Integer usuarioId) {
-        // Buscar la notificación
+        log.info("Marcando notificación como leída - ID: {}, Usuario ID: {}", notificacionId, usuarioId);
+
         Notificacion notificacion = notificacionRepository.findById(notificacionId)
                 .orElseThrow(() -> new IllegalArgumentException("Notificación no encontrada"));
 
-        //  VALIDAR que la notificación pertenezca al usuario autenticado
+        // ⚠️ VALIDAR que la notificación pertenezca al usuario autenticado
         if (!notificacion.getUsuariosId().getId().equals(usuarioId)) {
+            log.warn("Intento de acceso no autorizado - Notificación ID: {}, Usuario ID: {}",
+                    notificacionId, usuarioId);
             throw new SecurityException("No tienes permiso para modificar esta notificación");
         }
 
-        // Marcar como leída
         notificacionRepository.marcarComoLeida(notificacionId);
+        log.debug("Notificación marcada como leída - ID: {}", notificacionId);
     }
 
     /**
@@ -133,9 +125,13 @@ public class NotificacionBl {
      */
     @Transactional
     public void marcarTodasComoLeidas(Integer usuarioId) {
+        log.info("Marcando todas las notificaciones como leídas - Usuario ID: {}", usuarioId);
+
         Usuarios usuario = usuariosRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+
         notificacionRepository.marcarTodasComoLeidas(usuario);
+        log.debug("Todas las notificaciones marcadas como leídas - Usuario ID: {}", usuarioId);
     }
 
     /**
@@ -143,28 +139,52 @@ public class NotificacionBl {
      */
     @Transactional(readOnly = true)
     public Long contarNoLeidas(Integer usuarioId) {
+        log.debug("Contando notificaciones no leídas - Usuario ID: {}", usuarioId);
+
         Usuarios usuario = usuariosRepository.findById(usuarioId)
                 .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+
         return notificacionRepository.countByUsuariosIdAndLeido(usuario, false);
     }
 
     /**
      * Elimina una notificación
-     *  VALIDACIÓN DE SEGURIDAD: Verifica que la notificación pertenezca al usuario
+     * VALIDACIÓN DE SEGURIDAD: Verifica que la notificación pertenezca al usuario
      */
     @Transactional
     public void eliminarNotificacion(Integer notificacionId, Integer usuarioId) {
-        // Buscar la notificación
+        log.info("Eliminando notificación - ID: {}, Usuario ID: {}", notificacionId, usuarioId);
+
         Notificacion notificacion = notificacionRepository.findById(notificacionId)
                 .orElseThrow(() -> new IllegalArgumentException("Notificación no encontrada"));
 
-        //  VALIDAR que la notificación pertenezca al usuario autenticado
+        //VALIDAR que la notificación pertenezca al usuario autenticado
         if (!notificacion.getUsuariosId().getId().equals(usuarioId)) {
+            log.warn("Intento de eliminación no autorizado - Notificación ID: {}, Usuario ID: {}",
+                    notificacionId, usuarioId);
             throw new SecurityException("No tienes permiso para eliminar esta notificación");
         }
 
-        // Eliminar
         notificacionRepository.delete(notificacion);
+        log.info("Notificación eliminada - ID: {}", notificacionId);
+    }
+
+    // ==================== MÉTODOS AUXILIARES PRIVADOS ====================
+
+    /**
+     * Convierte metadata a JSON string
+     */
+    private String convertirMetadataAJson(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return null;
+        }
+
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException e) {
+            log.error("Error al serializar metadata", e);
+            return null;
+        }
     }
 
     /**
@@ -183,10 +203,9 @@ public class NotificacionBl {
         // Parsear metadata si existe
         if (notificacion.getMetadata() != null) {
             try {
-                dto.setMetadata(objectMapper.readValue(
-                        notificacion.getMetadata(), Map.class));
+                dto.setMetadata(objectMapper.readValue(notificacion.getMetadata(), Map.class));
             } catch (JsonProcessingException e) {
-                System.err.println("Error al deserializar metadata: " + e.getMessage());
+                log.error("Error al deserializar metadata - Notificación ID: {}", notificacion.getId(), e);
             }
         }
 
@@ -194,21 +213,21 @@ public class NotificacionBl {
     }
 
     /**
-     * Calcula tiempo relativo para mostrar en UI
+     * Calcula tiempo relativo para mostrar en UI (mejorado con LocalDateTime)
      */
-    private String calcularTiempoRelativo(Date fecha) {
-        long diff = System.currentTimeMillis() - fecha.getTime();
-        long segundos = diff / 1000;
+    private String calcularTiempoRelativo(LocalDateTime fechaCreacion) {
+        Duration duracion = Duration.between(fechaCreacion, LocalDateTime.now());
 
+        long segundos = duracion.getSeconds();
         if (segundos < 60) return "Justo ahora";
 
-        long minutos = segundos / 60;
+        long minutos = duracion.toMinutes();
         if (minutos < 60) return "Hace " + minutos + " minuto" + (minutos > 1 ? "s" : "");
 
-        long horas = minutos / 60;
+        long horas = duracion.toHours();
         if (horas < 24) return "Hace " + horas + " hora" + (horas > 1 ? "s" : "");
 
-        long dias = horas / 24;
+        long dias = duracion.toDays();
         if (dias < 30) return "Hace " + dias + " día" + (dias > 1 ? "s" : "");
 
         long meses = dias / 30;

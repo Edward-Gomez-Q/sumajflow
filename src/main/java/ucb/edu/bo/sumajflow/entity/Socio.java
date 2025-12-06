@@ -1,192 +1,136 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlTransient;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- *
- * @author osval
- */
 @Entity
 @Table(name = "socio")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "Socio.findAll", query = "SELECT s FROM Socio s"),
-    @NamedQuery(name = "Socio.findById", query = "SELECT s FROM Socio s WHERE s.id = :id"),
-    @NamedQuery(name = "Socio.findByFechaEnvio", query = "SELECT s FROM Socio s WHERE s.fechaEnvio = :fechaEnvio"),
-    @NamedQuery(name = "Socio.findByEstado", query = "SELECT s FROM Socio s WHERE s.estado = :estado"),
-    @NamedQuery(name = "Socio.findByCarnetAfiliacionUrl", query = "SELECT s FROM Socio s WHERE s.carnetAfiliacionUrl = :carnetAfiliacionUrl"),
-    @NamedQuery(name = "Socio.findByCarnetIdentidadUrl", query = "SELECT s FROM Socio s WHERE s.carnetIdentidadUrl = :carnetIdentidadUrl")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {
+        "usuariosId",
+        "cooperativaSocioList",
+        "minasList",
+        "concentradoList",
+        "liquidacionList"
+})
 public class Socio implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @Basic(optional = false)
+
     @NotNull
-    @Column(name = "fecha_envio")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fechaEnvio;
-    @Basic(optional = false)
+    @Column(name = "fecha_envio", nullable = false)
+    private LocalDateTime fechaEnvio;
+
     @NotNull
     @Size(min = 1, max = 100)
-    @Column(name = "estado")
+    @Column(name = "estado", nullable = false, length = 100)
     private String estado;
+
     @Size(max = 200)
-    @Column(name = "carnet_afiliacion_url")
+    @Column(name = "carnet_afiliacion_url", length = 200)
     private String carnetAfiliacionUrl;
+
     @Size(max = 200)
-    @Column(name = "carnet_identidad_url")
+    @Column(name = "carnet_identidad_url", length = 200)
     private String carnetIdentidadUrl;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "socioId", fetch = FetchType.LAZY)
-    private List<CooperativaSocio> cooperativaSocioList;
-    @JoinColumn(name = "usuarios_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    // Auditoría
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "usuarios_id", nullable = false, unique = true)
     private Usuarios usuariosId;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "socioId", fetch = FetchType.LAZY)
-    private List<Minas> minasList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "socioId", fetch = FetchType.LAZY)
-    private List<Liquidacion> liquidacionList;
 
-    public Socio() {
+    @OneToMany(mappedBy = "socioId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<CooperativaSocio> cooperativaSocioList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "socioId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<Minas> minasList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "socioPropietarioId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Concentrado> concentradoList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "socioId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Liquidacion> liquidacionList = new ArrayList<>();
+
+    // Métodos helper
+    public void addCooperativaSocio(CooperativaSocio cooperativaSocio) {
+        cooperativaSocioList.add(cooperativaSocio);
+        cooperativaSocio.setSocioId(this);
     }
 
-    public Socio(Integer id) {
-        this.id = id;
+    public void removeCooperativaSocio(CooperativaSocio cooperativaSocio) {
+        cooperativaSocioList.remove(cooperativaSocio);
+        cooperativaSocio.setSocioId(null);
     }
 
-    public Socio(Integer id, Date fechaEnvio, String estado) {
-        this.id = id;
-        this.fechaEnvio = fechaEnvio;
-        this.estado = estado;
+    public void addMina(Minas mina) {
+        minasList.add(mina);
+        mina.setSocioId(this);
     }
 
-    public Integer getId() {
-        return id;
+    public void removeMina(Minas mina) {
+        minasList.remove(mina);
+        mina.setSocioId(null);
     }
 
-    public void setId(Integer id) {
-        this.id = id;
+    public void addConcentrado(Concentrado concentrado) {
+        concentradoList.add(concentrado);
+        concentrado.setSocioPropietarioId(this);
     }
 
-    public Date getFechaEnvio() {
-        return fechaEnvio;
+    public void removeConcentrado(Concentrado concentrado) {
+        concentradoList.remove(concentrado);
+        concentrado.setSocioPropietarioId(null);
     }
 
-    public void setFechaEnvio(Date fechaEnvio) {
-        this.fechaEnvio = fechaEnvio;
+    public void addLiquidacion(Liquidacion liquidacion) {
+        liquidacionList.add(liquidacion);
+        liquidacion.setSocioId(this);
     }
 
-    public String getEstado() {
-        return estado;
+    public void removeLiquidacion(Liquidacion liquidacion) {
+        liquidacionList.remove(liquidacion);
+        liquidacion.setSocioId(null);
     }
 
-    public void setEstado(String estado) {
-        this.estado = estado;
-    }
-
-    public String getCarnetAfiliacionUrl() {
-        return carnetAfiliacionUrl;
-    }
-
-    public void setCarnetAfiliacionUrl(String carnetAfiliacionUrl) {
-        this.carnetAfiliacionUrl = carnetAfiliacionUrl;
-    }
-
-    public String getCarnetIdentidadUrl() {
-        return carnetIdentidadUrl;
-    }
-
-    public void setCarnetIdentidadUrl(String carnetIdentidadUrl) {
-        this.carnetIdentidadUrl = carnetIdentidadUrl;
-    }
-
-    @XmlTransient
-    public List<CooperativaSocio> getCooperativaSocioList() {
-        return cooperativaSocioList;
-    }
-
-    public void setCooperativaSocioList(List<CooperativaSocio> cooperativaSocioList) {
-        this.cooperativaSocioList = cooperativaSocioList;
-    }
-
-    public Usuarios getUsuariosId() {
-        return usuariosId;
-    }
-
-    public void setUsuariosId(Usuarios usuariosId) {
-        this.usuariosId = usuariosId;
-    }
-
-    @XmlTransient
-    public List<Minas> getMinasList() {
-        return minasList;
-    }
-
-    public void setMinasList(List<Minas> minasList) {
-        this.minasList = minasList;
-    }
-
-    @XmlTransient
-    public List<Liquidacion> getLiquidacionList() {
-        return liquidacionList;
-    }
-
-    public void setLiquidacionList(List<Liquidacion> liquidacionList) {
-        this.liquidacionList = liquidacionList;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof Socio)) {
-            return false;
+    @PrePersist
+    protected void onCreate() {
+        if (fechaEnvio == null) {
+            fechaEnvio = LocalDateTime.now();
         }
-        Socio other = (Socio) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
+        if (estado == null) {
+            estado = "pendiente";
         }
-        return true;
     }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.Socio[ id=" + id + " ]";
-    }
-    
 }

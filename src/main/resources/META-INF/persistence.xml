@@ -5,14 +5,17 @@
     <class>ucb.edu.bo.sumajflow.entity.Sectores</class>
     <class>ucb.edu.bo.sumajflow.entity.Pesajes</class>
     <class>ucb.edu.bo.sumajflow.entity.Auditoria</class>
+    <class>ucb.edu.bo.sumajflow.entity.AuditoriaLotes</class>
     <class>ucb.edu.bo.sumajflow.entity.Minas</class>
     <class>ucb.edu.bo.sumajflow.entity.Lotes</class>
     <class>ucb.edu.bo.sumajflow.entity.Usuarios</class>
     <class>ucb.edu.bo.sumajflow.entity.BalanzaIngenio</class>
     <class>ucb.edu.bo.sumajflow.entity.LoteMinerales</class>
+    <class>ucb.edu.bo.sumajflow.entity.LoteProcesoPlanta</class>
     <class>ucb.edu.bo.sumajflow.entity.Socio</class>
     <class>ucb.edu.bo.sumajflow.entity.CooperativaSocio</class>
     <class>ucb.edu.bo.sumajflow.entity.LoteComercializadora</class>
+    <class>ucb.edu.bo.sumajflow.entity.LoteConcentradoRelacion</class>
     <class>ucb.edu.bo.sumajflow.entity.AlmacenIngenio</class>
     <class>ucb.edu.bo.sumajflow.entity.IngenioMinero</class>
     <class>ucb.edu.bo.sumajflow.entity.ProcesosPlanta</class>
@@ -38,7 +41,7 @@
     <class>ucb.edu.bo.sumajflow.entity.Liquidacion</class>
     <class>ucb.edu.bo.sumajflow.entity.Notificacion</class>
     <properties>
-      <property name="javax.persistence.jdbc.url" value="jdbc:postgresql://localhost:5432/flow"/>
+      <property name="javax.persistence.jdbc.url" value="jdbc:postgresql://localhost:5432/sumaj"/>
       <property name="javax.persistence.jdbc.user" value="postgres"/>
       <property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver"/>
       <property name="javax.persistence.jdbc.password" value="12345678"/>

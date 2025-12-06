@@ -1,191 +1,95 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlTransient;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- *
- * @author osval
- */
 @Entity
 @Table(name = "minas")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "Minas.findAll", query = "SELECT m FROM Minas m"),
-    @NamedQuery(name = "Minas.findById", query = "SELECT m FROM Minas m WHERE m.id = :id"),
-    @NamedQuery(name = "Minas.findByNombre", query = "SELECT m FROM Minas m WHERE m.nombre = :nombre"),
-    @NamedQuery(name = "Minas.findByFotoUrl", query = "SELECT m FROM Minas m WHERE m.fotoUrl = :fotoUrl"),
-    @NamedQuery(name = "Minas.findByLatitud", query = "SELECT m FROM Minas m WHERE m.latitud = :latitud"),
-    @NamedQuery(name = "Minas.findByLongitud", query = "SELECT m FROM Minas m WHERE m.longitud = :longitud")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {"socioId", "sectoresId", "lotesList"})
 public class Minas implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @Basic(optional = false)
+
     @NotNull
     @Size(min = 1, max = 100)
-    @Column(name = "nombre")
+    @Column(name = "nombre", nullable = false, length = 100)
     private String nombre;
+
     @Size(max = 200)
-    @Column(name = "foto_url")
+    @Column(name = "foto_url", length = 200)
     private String fotoUrl;
-    // @Max(value=?)  @Min(value=?)//if you know range of your decimal fields consider using these annotations to enforce field validation
-    @Basic(optional = false)
+
     @NotNull
-    @Column(name = "latitud")
+    @Column(name = "latitud", nullable = false, precision = 10, scale = 7)
     private BigDecimal latitud;
-    @Basic(optional = false)
+
     @NotNull
-    @Column(name = "longitud")
+    @Column(name = "longitud", nullable = false, precision = 10, scale = 7)
     private BigDecimal longitud;
-    @Size(max = 50)
-    @Column(name = "estado")
+
+    @NotNull
+    @Size(min = 1, max = 20)
+    @Column(name = "estado", nullable = false, length = 20)
     private String estado;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "minasId", fetch = FetchType.LAZY)
-    private List<Lotes> lotesList;
-    @JoinColumn(name = "sectores_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    private Sectores sectoresId;
-    @JoinColumn(name = "socio_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    // Auditoría
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "socio_id", nullable = false)
     private Socio socioId;
 
-    public Minas() {
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "sectores_id", nullable = false)
+    private Sectores sectoresId;
+
+    @OneToMany(mappedBy = "minasId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<Lotes> lotesList = new ArrayList<>();
+
+    // Métodos helper
+    public void addLote(Lotes lote) {
+        lotesList.add(lote);
+        lote.setMinasId(this);
     }
 
-    public Minas(Integer id) {
-        this.id = id;
+    public void removeLote(Lotes lote) {
+        lotesList.remove(lote);
+        lote.setMinasId(null);
     }
 
-    public Minas(Integer id, String nombre, BigDecimal latitud, BigDecimal longitud) {
-        this.id = id;
-        this.nombre = nombre;
-        this.latitud = latitud;
-        this.longitud = longitud;
-    }
-
-    public Integer getId() {
-        return id;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public String getNombre() {
-        return nombre;
-    }
-
-    public void setNombre(String nombre) {
-        this.nombre = nombre;
-    }
-
-    public String getFotoUrl() {
-        return fotoUrl;
-    }
-
-    public void setFotoUrl(String fotoUrl) {
-        this.fotoUrl = fotoUrl;
-    }
-
-    public BigDecimal getLatitud() {
-        return latitud;
-    }
-
-    public void setLatitud(BigDecimal latitud) {
-        this.latitud = latitud;
-    }
-
-    public BigDecimal getLongitud() {
-        return longitud;
-    }
-
-    public void setLongitud(BigDecimal longitud) {
-        this.longitud = longitud;
-    }
-
-    public String getEstado() {
-        return estado;
-    }
-    public void setEstado(String estado) {
-        this.estado = estado;
-    }
-
-    @XmlTransient
-    public List<Lotes> getLotesList() {
-        return lotesList;
-    }
-
-    public void setLotesList(List<Lotes> lotesList) {
-        this.lotesList = lotesList;
-    }
-
-    public Sectores getSectoresId() {
-        return sectoresId;
-    }
-
-    public void setSectoresId(Sectores sectoresId) {
-        this.sectoresId = sectoresId;
-    }
-
-    public Socio getSocioId() {
-        return socioId;
-    }
-
-    public void setSocioId(Socio socioId) {
-        this.socioId = socioId;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof Minas)) {
-            return false;
+    @PrePersist
+    protected void onCreate() {
+        if (estado == null) {
+            estado = "activo";
         }
-        Minas other = (Minas) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
-        }
-        return true;
     }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.Minas[ id=" + id + " ]";
-    }
-    
 }

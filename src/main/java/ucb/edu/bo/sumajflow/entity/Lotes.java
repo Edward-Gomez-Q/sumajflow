@@ -1,202 +1,195 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package ucb.edu.bo.sumajflow.entity;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.NamedQueries;
-import jakarta.persistence.NamedQuery;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import jakarta.xml.bind.annotation.XmlRootElement;
-import jakarta.xml.bind.annotation.XmlTransient;
+import lombok.*;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- *
- * @author osval
- */
 @Entity
 @Table(name = "lotes")
-@XmlRootElement
-@NamedQueries({
-    @NamedQuery(name = "Lotes.findAll", query = "SELECT l FROM Lotes l"),
-    @NamedQuery(name = "Lotes.findById", query = "SELECT l FROM Lotes l WHERE l.id = :id"),
-    @NamedQuery(name = "Lotes.findByCamionesSolicitados", query = "SELECT l FROM Lotes l WHERE l.camionesSolicitados = :camionesSolicitados"),
-    @NamedQuery(name = "Lotes.findByTipoOperacion", query = "SELECT l FROM Lotes l WHERE l.tipoOperacion = :tipoOperacion"),
-    @NamedQuery(name = "Lotes.findByEstado", query = "SELECT l FROM Lotes l WHERE l.estado = :estado")})
+@EntityListeners(AuditingEntityListener.class)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@ToString(exclude = {
+        "minasId",
+        "asignacionCamionList",
+        "loteIngenioList",
+        "loteComercializadoraList",
+        "loteMineralesList",
+        "loteProcesoPlantaList",
+        "concentradoList",
+        "loteConcentradoRelacionList",
+        "reporteQuimicoList",
+        "liquidacionList",
+        "auditoriaLotesList"
+})
 public class Lotes implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Basic(optional = false)
-    @Column(name = "id")
     private Integer id;
-    @Basic(optional = false)
+
     @NotNull
-    @Column(name = "camiones_solicitados")
-    private int camionesSolicitados;
-    @Basic(optional = false)
+    @Column(name = "camiones_solicitados", nullable = false)
+    private Integer camionesSolicitados;
+
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "tipo_operacion")
+    @Column(name = "tipo_operacion", nullable = false, length = 50)
     private String tipoOperacion;
-    @Basic(optional = false)
+
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "tipo_mineral")
+    @Column(name = "tipo_mineral", nullable = false, length = 50)
     private String tipoMineral;
-    @Basic(optional = false)
+
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "estado")
+    @Column(name = "estado", nullable = false, length = 50)
     private String estado;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "lotesId", fetch = FetchType.LAZY)
-    private List<AsignacionCamion> asignacionCamionList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "lotesId", fetch = FetchType.LAZY)
-    private List<LoteIngenio> loteIngenioList;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "lotesId", fetch = FetchType.LAZY)
-    private List<LoteMinerales> loteMineralesList;
-    @JoinColumn(name = "minas_id", referencedColumnName = "id")
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+
+    @Column(name = "fecha_creacion")
+    private LocalDateTime fechaCreacion;
+
+    @Column(name = "fecha_aprobacion_cooperativa")
+    private LocalDateTime fechaAprobacionCooperativa;
+
+    @Column(name = "fecha_aprobacion_destino")
+    private LocalDateTime fechaAprobacionDestino;
+
+    @Column(name = "fecha_inicio_transporte")
+    private LocalDateTime fechaInicioTransporte;
+
+    @Column(name = "fecha_fin_transporte")
+    private LocalDateTime fechaFinTransporte;
+
+    @Column(name = "peso_total_estimado", precision = 12, scale = 2)
+    private BigDecimal pesoTotalEstimado;
+
+    @Column(name = "peso_total_real", precision = 12, scale = 2)
+    private BigDecimal pesoTotalReal;
+
+    @Column(name = "observaciones", columnDefinition = "text")
+    private String observaciones;
+
+    // Auditoría (solo updated_at, ya tiene fecha_creacion)
+    @LastModifiedDate
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    // Relaciones
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "minas_id", nullable = false)
     private Minas minasId;
-    @OneToMany(cascade = CascadeType.ALL, mappedBy = "lotesId", fetch = FetchType.LAZY)
-    private List<LoteComercializadora> loteComercializadoraList;
 
-    public Lotes() {
+    @OneToMany(mappedBy = "lotesId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<AsignacionCamion> asignacionCamionList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "lotesId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteIngenio> loteIngenioList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "lotesId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteComercializadora> loteComercializadoraList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "lotesId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteMinerales> loteMineralesList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteProcesoPlanta> loteProcesoPlantaList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteOrigenId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Concentrado> concentradoList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteComplejoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteConcentradoRelacion> loteConcentradoRelacionList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<ReporteQuimico> reporteQuimicoList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Liquidacion> liquidacionList = new ArrayList<>();
+
+    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<AuditoriaLotes> auditoriaLotesList = new ArrayList<>();
+
+    // Métodos helper para sincronización bidireccional
+    public void addAsignacionCamion(AsignacionCamion asignacion) {
+        asignacionCamionList.add(asignacion);
+        asignacion.setLotesId(this);
     }
 
-    public Lotes(Integer id) {
-        this.id = id;
+    public void removeAsignacionCamion(AsignacionCamion asignacion) {
+        asignacionCamionList.remove(asignacion);
+        asignacion.setLotesId(null);
     }
 
-    public Lotes(Integer id, int camionesSolicitados, String tipoOperacion, String estado) {
-        this.id = id;
-        this.camionesSolicitados = camionesSolicitados;
-        this.tipoOperacion = tipoOperacion;
-        this.estado = estado;
+    public void addLoteIngenio(LoteIngenio loteIngenio) {
+        loteIngenioList.add(loteIngenio);
+        loteIngenio.setLotesId(this);
     }
 
-    public Integer getId() {
-        return id;
+    public void removeLoteIngenio(LoteIngenio loteIngenio) {
+        loteIngenioList.remove(loteIngenio);
+        loteIngenio.setLotesId(null);
     }
 
-    public void setId(Integer id) {
-        this.id = id;
+    public void addLoteComercializadora(LoteComercializadora loteComercializadora) {
+        loteComercializadoraList.add(loteComercializadora);
+        loteComercializadora.setLotesId(this);
     }
 
-    public int getCamionesSolicitados() {
-        return camionesSolicitados;
+    public void removeLoteComercializadora(LoteComercializadora loteComercializadora) {
+        loteComercializadoraList.remove(loteComercializadora);
+        loteComercializadora.setLotesId(null);
     }
 
-    public void setCamionesSolicitados(int camionesSolicitados) {
-        this.camionesSolicitados = camionesSolicitados;
+    public void addLoteMineral(LoteMinerales loteMineral) {
+        loteMineralesList.add(loteMineral);
+        loteMineral.setLotesId(this);
     }
 
-    public String getTipoOperacion() {
-        return tipoOperacion;
+    public void removeLoteMineral(LoteMinerales loteMineral) {
+        loteMineralesList.remove(loteMineral);
+        loteMineral.setLotesId(null);
     }
 
-    public void setTipoOperacion(String tipoOperacion) {
-        this.tipoOperacion = tipoOperacion;
+    public void addLoteProceso(LoteProcesoPlanta loteProceso) {
+        loteProcesoPlantaList.add(loteProceso);
+        loteProceso.setLoteId(this);
     }
 
-    public String getTipoMineral() {
-        return tipoMineral;
-    }
-    public void setTipoMineral(String tipoMineral) {
-        this.tipoMineral = tipoMineral;
+    public void removeLoteProceso(LoteProcesoPlanta loteProceso) {
+        loteProcesoPlantaList.remove(loteProceso);
+        loteProceso.setLoteId(null);
     }
 
-    public String getEstado() {
-        return estado;
-    }
-
-    public void setEstado(String estado) {
-        this.estado = estado;
-    }
-
-    @XmlTransient
-    public List<AsignacionCamion> getAsignacionCamionList() {
-        return asignacionCamionList;
-    }
-
-    public void setAsignacionCamionList(List<AsignacionCamion> asignacionCamionList) {
-        this.asignacionCamionList = asignacionCamionList;
-    }
-
-    @XmlTransient
-    public List<LoteIngenio> getLoteIngenioList() {
-        return loteIngenioList;
-    }
-
-    public void setLoteIngenioList(List<LoteIngenio> loteIngenioList) {
-        this.loteIngenioList = loteIngenioList;
-    }
-
-    @XmlTransient
-    public List<LoteMinerales> getLoteMineralesList() {
-        return loteMineralesList;
-    }
-
-    public void setLoteMineralesList(List<LoteMinerales> loteMineralesList) {
-        this.loteMineralesList = loteMineralesList;
-    }
-
-    public Minas getMinasId() {
-        return minasId;
-    }
-
-    public void setMinasId(Minas minasId) {
-        this.minasId = minasId;
-    }
-
-    @XmlTransient
-    public List<LoteComercializadora> getLoteComercializadoraList() {
-        return loteComercializadoraList;
-    }
-
-    public void setLoteComercializadoraList(List<LoteComercializadora> loteComercializadoraList) {
-        this.loteComercializadoraList = loteComercializadoraList;
-    }
-
-    @Override
-    public int hashCode() {
-        int hash = 0;
-        hash += (id != null ? id.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        // TODO: Warning - this method won't work in the case the id fields are not set
-        if (!(object instanceof Lotes)) {
-            return false;
+    @PrePersist
+    protected void onCreate() {
+        if (fechaCreacion == null) {
+            fechaCreacion = LocalDateTime.now();
         }
-        Lotes other = (Lotes) object;
-        if ((this.id == null && other.id != null) || (this.id != null && !this.id.equals(other.id))) {
-            return false;
-        }
-        return true;
     }
-
-    @Override
-    public String toString() {
-        return "ucb.edu.bo.sumajflow.entity.Lotes[ id=" + id + " ]";
-    }
-    
 }
