@@ -39,7 +39,7 @@ public class Transportista implements Serializable {
 
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "licencia_conducir", nullable = false, length = 50)
+    @Column(name = "licencia_conducir", nullable = false, length = 200)
     private String licenciaConducir;
 
     @NotNull
@@ -104,6 +104,14 @@ public class Transportista implements Serializable {
     @OneToMany(mappedBy = "transportistaId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<AsignacionCamion> asignacionCamionList = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(
+            name = "invitacion_transportista_id",
+            referencedColumnName = "id"
+    )
+    private InvitacionTransportista invitacionTransportista;
+
 
     // Métodos helper
     public void addAsignacionCamion(AsignacionCamion asignacion) {

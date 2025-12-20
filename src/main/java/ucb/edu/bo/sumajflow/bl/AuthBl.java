@@ -48,6 +48,7 @@ public class AuthBl {
     private final JwtUtil jwtUtil;
     private final AuditoriaBl auditoriaBl;
     private final NotificacionBl notificacionBl;
+    private final TransportistaRepository transportistaRepository;
 
     /**
      * Método de login con contexto HTTP
@@ -643,6 +644,11 @@ public class AuthBl {
             Socio socio = socioRepository.findByUsuariosId(usuario)
                     .orElseThrow(() -> new IllegalArgumentException("Datos de socio no encontrados"));
             return "aprobado".equals(socio.getEstado());
+        }
+        if("transportista".equals(rol)) {
+            Transportista transportista = transportistaRepository.findByUsuariosId(usuario)
+                    .orElseThrow(() -> new IllegalArgumentException("Datos de transportista no encontrados"));
+            return "aprobado".equals(transportista.getEstado());
         }
         return true;
     }

@@ -40,6 +40,7 @@
     <class>ucb.edu.bo.sumajflow.entity.LoteIngenio</class>
     <class>ucb.edu.bo.sumajflow.entity.Liquidacion</class>
     <class>ucb.edu.bo.sumajflow.entity.Notificacion</class>
+    <class>ucb.edu.bo.sumajflow.entity.InvitacionTransportista</class>
     <properties>
       <property name="javax.persistence.jdbc.url" value="jdbc:postgresql://localhost:5432/sumaj"/>
       <property name="javax.persistence.jdbc.user" value="postgres"/>
