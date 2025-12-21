@@ -6,10 +6,12 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Entidad para invitaciones de transportistas mediante QR
+ * ACTUALIZADA: Sin FK directa a cooperativa, usa tablas intermedias
  */
 @Entity
 @Table(name = "invitacion_transportista")
@@ -17,15 +19,15 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"transportistaList", "invitacionesCooperativa", "invitacionesComercializadora"})
 public class InvitacionTransportista {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cooperativa_id", nullable = false)
-    private Cooperativa cooperativaId;
+    // ❌ ELIMINADO: @ManyToOne cooperativaId
+    // Ahora la relación es through invitacion_cooperativa
 
     @Column(name = "primer_nombre", nullable = false, length = 100)
     private String primerNombre;
@@ -95,10 +97,22 @@ public class InvitacionTransportista {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "invitacionTransportista", fetch = FetchType.LAZY)
-    private List<Transportista> transportistaList;
+    // ========== RELACIONES BIDIRECCIONALES ==========
+    
+    @OneToMany(mappedBy = "invitacionTransportista", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Transportista> transportistaList = new ArrayList<>();
 
-    // Métodos de conveniencia
+    @OneToMany(mappedBy = "invitacionTransportista", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<InvitacionCooperativa> invitacionesCooperativa = new ArrayList<>();
+
+    @OneToMany(mappedBy = "invitacionTransportista", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<InvitacionComercializadora> invitacionesComercializadora = new ArrayList<>();
+
+    // ========== MÉTODOS DE CONVENIENCIA ==========
+    
     public String getNombreCompleto() {
         StringBuilder nombre = new StringBuilder();
         nombre.append(primerNombre);
@@ -120,5 +134,27 @@ public class InvitacionTransportista {
         if (fechaEnvioCodigo == null) return false;
         // Código válido por 10 minutos
         return LocalDateTime.now().isBefore(fechaEnvioCodigo.plusMinutes(10));
+    }
+
+    // ========== MÉTODOS HELPER PARA COOPERATIVAS ==========
+    
+    /**
+     * Obtener la primera cooperativa que hizo la invitación
+     * (para compatibilidad con código legacy)
+     */
+    public Cooperativa getPrimeraCooperativa() {
+        if (invitacionesCooperativa == null || invitacionesCooperativa.isEmpty()) {
+            return null;
+        }
+        return invitacionesCooperativa.get(0).getCooperativa();
+    }
+
+    /**
+     * Verificar si fue invitado por una cooperativa específica
+     */
+    public boolean fueInvitadoPorCooperativa(Integer cooperativaId) {
+        if (invitacionesCooperativa == null) return false;
+        return invitacionesCooperativa.stream()
+                .anyMatch(ic -> ic.getCooperativa().getId().equals(cooperativaId));
     }
 }

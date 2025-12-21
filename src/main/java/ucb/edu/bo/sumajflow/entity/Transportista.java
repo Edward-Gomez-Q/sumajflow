@@ -23,7 +23,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"usuariosId", "asignacionCamionList"})
+@ToString(exclude = {"usuariosId", "asignacionCamionList", "invitacionTransportista"})
 public class Transportista implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -96,7 +96,8 @@ public class Transportista implements Serializable {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // Relaciones
+    // ========== RELACIONES ==========
+    
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "usuarios_id", nullable = false, unique = true)
     private Usuarios usuariosId;
@@ -105,29 +106,22 @@ public class Transportista implements Serializable {
     @Builder.Default
     private List<AsignacionCamion> asignacionCamionList = new ArrayList<>();
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // ✅ CAMBIADO: Ahora es NOT NULL (según tu nueva BD)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "invitacion_transportista_id",
-            referencedColumnName = "id"
+            referencedColumnName = "id",
+            nullable = false
     )
     private InvitacionTransportista invitacionTransportista;
 
-
-    // Métodos helper
-    public void addAsignacionCamion(AsignacionCamion asignacion) {
-        asignacionCamionList.add(asignacion);
-        asignacion.setTransportistaId(this);
-    }
-
-    public void removeAsignacionCamion(AsignacionCamion asignacion) {
-        asignacionCamionList.remove(asignacion);
-        asignacion.setTransportistaId(null);
-    }
+    // ========== MÉTODOS HELPER ==========
 
     @PrePersist
     protected void onCreate() {
+        // ✅ CAMBIADO: default es "aprobado" según tus comentarios
         if (estado == null) {
-            estado = "pendiente";
+            estado = "aprobado";
         }
         if (viajesCompletados == null) {
             viajesCompletados = 0;
@@ -135,5 +129,22 @@ public class Transportista implements Serializable {
         if (calificacionPromedio == null) {
             calificacionPromedio = BigDecimal.ZERO;
         }
+    }
+
+    /**
+     * Obtener la primera cooperativa que invitó a este transportista
+     * (para compatibilidad con código legacy)
+     */
+    public Cooperativa getPrimeraCooperativa() {
+        if (invitacionTransportista == null) return null;
+        return invitacionTransportista.getPrimeraCooperativa();
+    }
+
+    /**
+     * Verificar si trabaja con una cooperativa específica
+     */
+    public boolean trabajaConCooperativa(Integer cooperativaId) {
+        if (invitacionTransportista == null) return false;
+        return invitacionTransportista.fueInvitadoPorCooperativa(cooperativaId);
     }
 }

@@ -6,7 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import ucb.edu.bo.sumajflow.entity.Cooperativa;
 import ucb.edu.bo.sumajflow.entity.InvitacionTransportista;
 
 import java.time.LocalDateTime;
@@ -15,6 +14,7 @@ import java.util.Optional;
 
 /**
  * Repository para invitaciones de transportistas con QR
+ * ACTUALIZADO: Sin referencia directa a cooperativa
  */
 @Repository
 public interface InvitacionTransportistaRepository extends JpaRepository<InvitacionTransportista, Integer> {
@@ -25,34 +25,39 @@ public interface InvitacionTransportistaRepository extends JpaRepository<Invitac
     Optional<InvitacionTransportista> findByTokenInvitacion(String token);
 
     /**
-     * Buscar invitación activa por número de celular y cooperativa
+     * ✅ ACTUALIZADO: Buscar invitación activa por número de celular y cooperativa
+     * Ahora usa la tabla intermedia invitacion_cooperativa
      */
     @Query("SELECT i FROM InvitacionTransportista i " +
-            "WHERE i.cooperativaId = :cooperativa " +
+            "JOIN i.invitacionesCooperativa ic " +
+            "WHERE ic.cooperativa.id = :cooperativaId " +
             "AND i.numeroCelular = :celular " +
             "AND i.estado IN ('pendiente_qr', 'codigo_enviado', 'verificado') " +
             "AND i.fechaExpiracion > :ahora")
-    Optional<InvitacionTransportista> findInvitacionActivaPorCelular(
-            @Param("cooperativa") Cooperativa cooperativa,
+    Optional<InvitacionTransportista> findInvitacionActivaPorCelularYCooperativa(
+            @Param("cooperativaId") Integer cooperativaId,
             @Param("celular") String celular,
             @Param("ahora") LocalDateTime ahora
     );
 
     /**
-     * Listar invitaciones de una cooperativa con filtros
+     * ✅ ACTUALIZADO: Listar invitaciones de una cooperativa con filtros
+     * Ahora usa JOIN con invitacion_cooperativa
      */
-    @Query(value = "SELECT * FROM invitacion_transportista i " +
-            "WHERE i.cooperativa_id = :cooperativaId " +
-            "AND (:estado IS NULL OR i.estado = :estado) " +
-            "AND (:busqueda IS NULL OR " +
+    @Query(value = "SELECT DISTINCT i.* FROM invitacion_transportista i " +
+            "INNER JOIN invitacion_cooperativa ic ON i.id = ic.invitacion_transportista_id " +
+            "WHERE ic.cooperativa_id = :cooperativaId " +
+            "AND (:estado = '' OR :estado IS NULL OR i.estado = :estado) " +
+            "AND (:busqueda = '' OR :busqueda IS NULL OR " +
             "     LOWER(i.primer_nombre) LIKE LOWER(CONCAT('%', :busqueda, '%')) OR " +
             "     LOWER(i.primer_apellido) LIKE LOWER(CONCAT('%', :busqueda, '%')) OR " +
             "     i.numero_celular LIKE CONCAT('%', :busqueda, '%')) " +
             "ORDER BY i.created_at DESC",
-            countQuery = "SELECT COUNT(*) FROM invitacion_transportista i " +
-                    "WHERE i.cooperativa_id = :cooperativaId " +
-                    "AND (:estado IS NULL OR i.estado = :estado) " +
-                    "AND (:busqueda IS NULL OR " +
+            countQuery = "SELECT COUNT(DISTINCT i.id) FROM invitacion_transportista i " +
+                    "INNER JOIN invitacion_cooperativa ic ON i.id = ic.invitacion_transportista_id " +
+                    "WHERE ic.cooperativa_id = :cooperativaId " +
+                    "AND (:estado = '' OR :estado IS NULL OR i.estado = :estado) " +
+                    "AND (:busqueda = '' OR :busqueda IS NULL OR " +
                     "     LOWER(i.primer_nombre) LIKE LOWER(CONCAT('%', :busqueda, '%')) OR " +
                     "     LOWER(i.primer_apellido) LIKE LOWER(CONCAT('%', :busqueda, '%')) OR " +
                     "     i.numero_celular LIKE CONCAT('%', :busqueda, '%'))",
@@ -65,12 +70,13 @@ public interface InvitacionTransportistaRepository extends JpaRepository<Invitac
     );
 
     /**
-     * Contar invitaciones pendientes de una cooperativa
+     * ✅ ACTUALIZADO: Contar invitaciones pendientes de una cooperativa
      */
-    @Query("SELECT COUNT(i) FROM InvitacionTransportista i " +
-            "WHERE i.cooperativaId = :cooperativa " +
+    @Query("SELECT COUNT(DISTINCT i) FROM InvitacionTransportista i " +
+            "JOIN i.invitacionesCooperativa ic " +
+            "WHERE ic.cooperativa.id = :cooperativaId " +
             "AND i.estado IN ('pendiente_qr', 'codigo_enviado')")
-    Long countPendientesByCooperativa(@Param("cooperativa") Cooperativa cooperativa);
+    Long countPendientesByCooperativa(@Param("cooperativaId") Integer cooperativaId);
 
     /**
      * Buscar invitaciones expiradas
@@ -81,15 +87,16 @@ public interface InvitacionTransportistaRepository extends JpaRepository<Invitac
     List<InvitacionTransportista> findInvitacionesExpiradas(@Param("ahora") LocalDateTime ahora);
 
     /**
-     * Verificar si existe invitación reciente para un celular
+     * ✅ ACTUALIZADO: Verificar si existe invitación reciente para un celular
      */
     @Query("SELECT CASE WHEN COUNT(i) > 0 THEN true ELSE false END " +
             "FROM InvitacionTransportista i " +
+            "JOIN i.invitacionesCooperativa ic " +
             "WHERE i.numeroCelular = :celular " +
-            "AND i.cooperativaId = :cooperativa " +
+            "AND ic.cooperativa.id = :cooperativaId " +
             "AND i.fechaEnvio > :hace24horas")
     boolean existeInvitacionReciente(
-            @Param("cooperativa") Cooperativa cooperativa,
+            @Param("cooperativaId") Integer cooperativaId,
             @Param("celular") String celular,
             @Param("hace24horas") LocalDateTime hace24horas
     );
@@ -100,10 +107,11 @@ public interface InvitacionTransportistaRepository extends JpaRepository<Invitac
     Optional<InvitacionTransportista> findByCodigoVerificacion(String codigo);
 
     /**
-     * Contar invitaciones por estado para estadísticas
+     * ✅ ACTUALIZADO: Contar invitaciones por estado para estadísticas
      */
-    @Query("SELECT i.estado, COUNT(i) FROM InvitacionTransportista i " +
-            "WHERE i.cooperativaId = :cooperativa " +
+    @Query("SELECT i.estado, COUNT(DISTINCT i) FROM InvitacionTransportista i " +
+            "JOIN i.invitacionesCooperativa ic " +
+            "WHERE ic.cooperativa.id = :cooperativaId " +
             "GROUP BY i.estado")
-    List<Object[]> countByEstado(@Param("cooperativa") Cooperativa cooperativa);
+    List<Object[]> countByEstado(@Param("cooperativaId") Integer cooperativaId);
 }
