@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.AsignacionCamion;
 import ucb.edu.bo.sumajflow.entity.Lotes;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface AsignacionCamionRepository extends JpaRepository<AsignacionCamion, Integer> {
@@ -39,4 +40,22 @@ public interface AsignacionCamionRepository extends JpaRepository<AsignacionCami
           @Param("lote") Lotes lote,
           @Param("estado") String estado
   );
+  // Obtener asignaciones por estado
+  @Query("SELECT a FROM AsignacionCamion a WHERE a.estado = :estado ORDER BY a.fechaAsignacion DESC")
+  List<AsignacionCamion> findByEstado(@Param("estado") String estado);
+
+  // Verificar si todas las asignaciones de un lote están en un estado específico
+  @Query("SELECT CASE WHEN COUNT(a) = " +
+          "(SELECT COUNT(a2) FROM AsignacionCamion a2 WHERE a2.lotesId = :lote) " +
+          "THEN true ELSE false END " +
+          "FROM AsignacionCamion a " +
+          "WHERE a.lotesId = :lote AND a.estado = :estado")
+  boolean todasEnEstado(@Param("lote") Lotes lote, @Param("estado") String estado);
+
+  // Obtener peso total real de un lote (suma de pesajes netos)
+  @Query("SELECT COALESCE(SUM(p.pesoNeto), 0) " +
+          "FROM Pesajes p " +
+          "WHERE p.asignacionCamionId IN " +
+          "(SELECT a FROM AsignacionCamion a WHERE a.lotesId = :lote)")
+  BigDecimal calcularPesoTotalReal(@Param("lote") Lotes lote);
 }
