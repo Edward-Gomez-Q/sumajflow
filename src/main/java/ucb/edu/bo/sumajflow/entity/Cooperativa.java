@@ -94,7 +94,7 @@ public class Cooperativa implements Serializable {
     private LocalDateTime updatedAt;
 
     // Relaciones
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "usuarios_id", nullable = false)
     private Usuarios usuariosId;
 

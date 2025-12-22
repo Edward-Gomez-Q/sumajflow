@@ -75,4 +75,21 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
             @Param("busqueda") String busqueda,
             @Param("busquedaPattern") String busquedaPattern
     );
+    // Obtener transportistas disponibles para una cooperativa
+    @Query("SELECT t FROM Transportista t " +
+            "WHERE t.estado = 'aprobado' " +
+            "AND EXISTS (" +
+            "    SELECT 1 FROM InvitacionCooperativa ic " +
+            "    WHERE ic.invitacionTransportista.id = t.invitacionTransportista.id " +
+            "    AND ic.cooperativa.id = :cooperativaId" +
+            ") " +
+            "ORDER BY t.calificacionPromedio DESC, t.viajesCompletados DESC")
+    List<Transportista> findDisponiblesByCooperativa(@Param("cooperativaId") Integer cooperativaId);
+
+    // Verificar si está disponible (no tiene viajes activos)
+    @Query("SELECT CASE WHEN COUNT(ac) = 0 THEN true ELSE false END " +
+            "FROM AsignacionCamion ac " +
+            "WHERE ac.transportistaId.id = :transportistaId " +
+            "AND ac.estado NOT IN ('viaje_terminado', 'cancelado')")
+    boolean isDisponible(@Param("transportistaId") Integer transportistaId);
 }
