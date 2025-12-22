@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -48,14 +50,8 @@ public class AsignacionCamion implements Serializable {
     @Column(name = "fecha_fin")
     private LocalDateTime fechaFin;
 
-    @Column(name = "peso_bruto", precision = 12, scale = 2)
-    private BigDecimal pesoBruto;
-
-    @Column(name = "peso_neto", precision = 12, scale = 2)
-    private BigDecimal pesoNeto;
-
-    @Size(max = 255)
-    @Column(name = "observaciones", length = 255)
+    @Column(name = "observaciones",  columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String observaciones;
 
     // Auditoría

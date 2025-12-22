@@ -23,7 +23,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"loteId", "socioId", "cotizacionesList", "deduccionesList"})
+@ToString(exclude = {"socioId", "cotizacionesList", "deduccionesList", "liquidacionLoteList", "liquidacionConcentradoList"})
 public class Liquidacion implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -68,13 +68,19 @@ public class Liquidacion implements Serializable {
     private LocalDateTime updatedAt;
 
     // Relaciones
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lote_id")
-    private Lotes loteId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "socio_id", nullable = false)
     private Socio socioId;
+
+    // CAMBIO: Relación con lotes ahora es a través de tabla intermedia (N:M)
+    @OneToMany(mappedBy = "liquidacionId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
+
+    // NUEVO: Relación con concentrados a través de tabla intermedia (N:M)
+    @OneToMany(mappedBy = "liquidacionId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
 
     @OneToMany(mappedBy = "liquidacionId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
@@ -84,7 +90,29 @@ public class Liquidacion implements Serializable {
     @Builder.Default
     private List<LiquidacionDeduccion> deduccionesList = new ArrayList<>();
 
-    // Métodos helper
+    // Métodos helper para lotes
+    public void addLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.add(liquidacionLote);
+        liquidacionLote.setLiquidacionId(this);
+    }
+
+    public void removeLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.remove(liquidacionLote);
+        liquidacionLote.setLiquidacionId(null);
+    }
+
+    // Métodos helper para concentrados
+    public void addLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.add(liquidacionConcentrado);
+        liquidacionConcentrado.setLiquidacionId(this);
+    }
+
+    public void removeLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.remove(liquidacionConcentrado);
+        liquidacionConcentrado.setLiquidacionId(null);
+    }
+
+    // Métodos helper para cotizaciones
     public void addCotizacion(LiquidacionCotizacion cotizacion) {
         cotizacionesList.add(cotizacion);
         cotizacion.setLiquidacionId(this);
@@ -95,6 +123,7 @@ public class Liquidacion implements Serializable {
         cotizacion.setLiquidacionId(null);
     }
 
+    // Métodos helper para deducciones
     public void addDeduccion(LiquidacionDeduccion deduccion) {
         deduccionesList.add(deduccion);
         deduccion.setLiquidacionId(this);

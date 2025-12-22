@@ -12,6 +12,8 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "reporte_quimico")
@@ -21,7 +23,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = "loteId")
+@ToString(exclude = {"liquidacionLoteList", "liquidacionConcentradoList"})
 public class ReporteQuimico implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -72,8 +74,37 @@ public class ReporteQuimico implements Serializable {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // Relaciones
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lote_id")
-    private Lotes loteId;
+    // ELIMINADO: loteId (ya no tiene relación directa con lotes)
+
+    // NUEVO: Relaciones inversas con liquidacion_lote
+    @OneToMany(mappedBy = "reporteQuimicoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
+
+    // NUEVO: Relaciones inversas con liquidacion_concentrado
+    @OneToMany(mappedBy = "reporteQuimicoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
+
+    // Métodos helper para liquidacion lote
+    public void addLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.add(liquidacionLote);
+        liquidacionLote.setReporteQuimicoId(this);
+    }
+
+    public void removeLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.remove(liquidacionLote);
+        liquidacionLote.setReporteQuimicoId(null);
+    }
+
+    // Métodos helper para liquidacion concentrado
+    public void addLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.add(liquidacionConcentrado);
+        liquidacionConcentrado.setReporteQuimicoId(this);
+    }
+
+    public void removeLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.remove(liquidacionConcentrado);
+        liquidacionConcentrado.setReporteQuimicoId(null);
+    }
 }

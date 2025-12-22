@@ -27,11 +27,8 @@ import java.util.List;
         "loteIngenioList",
         "loteComercializadoraList",
         "loteMineralesList",
-        "loteProcesoPlantaList",
-        "concentradoList",
         "loteConcentradoRelacionList",
-        "reporteQuimicoList",
-        "liquidacionList",
+        "liquidacionLoteList",
         "auditoriaLotesList"
 })
 public class Lotes implements Serializable {
@@ -111,25 +108,15 @@ public class Lotes implements Serializable {
     @Builder.Default
     private List<LoteMinerales> loteMineralesList = new ArrayList<>();
 
-    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-    @Builder.Default
-    private List<LoteProcesoPlanta> loteProcesoPlantaList = new ArrayList<>();
-
-    @OneToMany(mappedBy = "loteOrigenId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @Builder.Default
-    private List<Concentrado> concentradoList = new ArrayList<>();
-
     @OneToMany(mappedBy = "loteComplejoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LoteConcentradoRelacion> loteConcentradoRelacionList = new ArrayList<>();
 
-    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @Builder.Default
-    private List<ReporteQuimico> reporteQuimicoList = new ArrayList<>();
+    // ELIMINADO: reporteQuimicoList (ahora está en las tablas intermedias)
 
-    @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "lotesId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
-    private List<Liquidacion> liquidacionList = new ArrayList<>();
+    private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
 
     @OneToMany(mappedBy = "loteId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
@@ -176,14 +163,14 @@ public class Lotes implements Serializable {
         loteMineral.setLotesId(null);
     }
 
-    public void addLoteProceso(LoteProcesoPlanta loteProceso) {
-        loteProcesoPlantaList.add(loteProceso);
-        loteProceso.setLoteId(this);
+    public void addLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.add(liquidacionLote);
+        liquidacionLote.setLotesId(this);
     }
 
-    public void removeLoteProceso(LoteProcesoPlanta loteProceso) {
-        loteProcesoPlantaList.remove(loteProceso);
-        loteProceso.setLoteId(null);
+    public void removeLiquidacionLote(LiquidacionLote liquidacionLote) {
+        liquidacionLoteList.remove(liquidacionLote);
+        liquidacionLote.setLotesId(null);
     }
 
     @PrePersist

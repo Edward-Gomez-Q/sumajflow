@@ -22,7 +22,13 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"ingenioMineroId", "loteOrigenId", "socioPropietarioId", "loteConcentradoRelacionList"})
+@ToString(exclude = {
+        "ingenioMineroId",
+        "socioPropietarioId",
+        "loteConcentradoRelacionList",
+        "liquidacionConcentradoList",
+        "loteProcesoPlantaList"
+})
 public class Concentrado implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -75,18 +81,25 @@ public class Concentrado implements Serializable {
     private IngenioMinero ingenioMineroId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lote_origen_id")
-    private Lotes loteOrigenId;
-
-    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "socio_propietario_id")
     private Socio socioPropietarioId;
 
+    // Relación con lotes a través de tabla intermedia
     @OneToMany(mappedBy = "concentradoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LoteConcentradoRelacion> loteConcentradoRelacionList = new ArrayList<>();
 
-    // Métodos helper
+    // Relación con liquidaciones a través de tabla intermedia
+    @OneToMany(mappedBy = "concentradoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
+
+    // NUEVO: Relación con procesos de planta (movido desde Lotes)
+    @OneToMany(mappedBy = "concentradoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<LoteProcesoPlanta> loteProcesoPlantaList = new ArrayList<>();
+
+    // Métodos helper para lote concentrado relacion
     public void addLoteConcentradoRelacion(LoteConcentradoRelacion relacion) {
         loteConcentradoRelacionList.add(relacion);
         relacion.setConcentradoId(this);
@@ -95,6 +108,28 @@ public class Concentrado implements Serializable {
     public void removeLoteConcentradoRelacion(LoteConcentradoRelacion relacion) {
         loteConcentradoRelacionList.remove(relacion);
         relacion.setConcentradoId(null);
+    }
+
+    // Métodos helper para liquidacion concentrado
+    public void addLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.add(liquidacionConcentrado);
+        liquidacionConcentrado.setConcentradoId(this);
+    }
+
+    public void removeLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
+        liquidacionConcentradoList.remove(liquidacionConcentrado);
+        liquidacionConcentrado.setConcentradoId(null);
+    }
+
+    // NUEVO: Métodos helper para lote proceso planta
+    public void addLoteProcesoPlanta(LoteProcesoPlanta loteProcesoPlanta) {
+        loteProcesoPlantaList.add(loteProcesoPlanta);
+        loteProcesoPlanta.setConcentradoId(this);
+    }
+
+    public void removeLoteProcesoPlanta(LoteProcesoPlanta loteProcesoPlanta) {
+        loteProcesoPlantaList.remove(loteProcesoPlanta);
+        loteProcesoPlanta.setConcentradoId(null);
     }
 
     @PrePersist
