@@ -114,3 +114,21 @@ twilio:
     token: ${TWILIO_AUTH_TOKEN}
   whatsapp:
     from: ${TWILIO_WHATSAPP_FROM:whatsapp:+14155238886}
+
+# SPRINGDOC OpenAPI (Swagger)
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+    default-models-expand-depth: 1
+    default-model-expand-depth: 1
+  show-actuator: false
+  paths-to-match: /**
+  packages-to-scan: ucb.edu.bo.sumajflow.controller

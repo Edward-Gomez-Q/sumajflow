@@ -103,6 +103,15 @@ public class SecurityConfig {
                         .requestMatchers("/auth/login", "/auth/register", "/auth/refresh", "/auth/health")
                         .permitAll()
 
+                        // Swagger/OpenAPI UI
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/swagger-resources/**",
+                                "/webjars/**"
+                        ).permitAll()
+
                         // Catálogos públicos
                         .requestMatchers("/public/**")
                         .permitAll()
