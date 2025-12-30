@@ -11,6 +11,7 @@ import ucb.edu.bo.sumajflow.entity.IngenioMinero;
 import ucb.edu.bo.sumajflow.repository.ComercializadoraRepository;
 import ucb.edu.bo.sumajflow.repository.IngenioMineroRepository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -57,6 +58,9 @@ public class DestinosBl {
     // ==================== MÉTODOS AUXILIARES ====================
 
     private IngenioSimpleDto convertIngenioToDto(IngenioMinero ingenio) {
+        BigDecimal lat = ingenio.getAlmacenesIngenioList().getFirst().getLatitud();
+        BigDecimal lon = ingenio.getAlmacenesIngenioList().getFirst().getLongitud();
+        BigDecimal precioTonelada = ingenio.getPlantaList().getFirst().getCostoProcesamiento();
         return new IngenioSimpleDto(
                 ingenio.getId(),
                 ingenio.getRazonSocial(),
@@ -65,11 +69,16 @@ public class DestinosBl {
                 ingenio.getNumeroTelefonoMovil(),
                 ingenio.getDepartamento(),
                 ingenio.getMunicipio(),
-                ingenio.getDireccion()
+                ingenio.getDireccion(),
+                lat,
+                lon,
+                precioTonelada
         );
     }
 
     private ComercializadoraSimpleDto convertComercializadoraToDto(Comercializadora comercializadora) {
+        BigDecimal lat = comercializadora.getAlmacenesList().getFirst().getLatitud();
+        BigDecimal lon = comercializadora.getAlmacenesList().getFirst().getLongitud();
         return new ComercializadoraSimpleDto(
                 comercializadora.getId(),
                 comercializadora.getRazonSocial(),
@@ -78,7 +87,9 @@ public class DestinosBl {
                 comercializadora.getNumeroTelefonoMovil(),
                 comercializadora.getDepartamento(),
                 comercializadora.getMunicipio(),
-                comercializadora.getDireccion()
+                comercializadora.getDireccion(),
+                lat,
+                lon
         );
     }
 }

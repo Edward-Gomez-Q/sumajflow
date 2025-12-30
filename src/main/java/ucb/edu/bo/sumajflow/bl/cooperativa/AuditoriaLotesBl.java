@@ -1,5 +1,6 @@
 package ucb.edu.bo.sumajflow.bl.cooperativa;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ public class AuditoriaLotesBl {
 
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final LotesRepository lotesRepository;
+    private final ObjectMapper objectMapper; // Inyectar ObjectMapper
 
     /**
      * Registrar acción en auditoría de lotes
@@ -147,9 +149,7 @@ public class AuditoriaLotesBl {
     // Método auxiliar para convertir Map a JSON (simplificado)
     private String convertMapToJsonb(Map<String, Object> map) {
         try {
-            // Usar ObjectMapper de Jackson en producción
-            // Por ahora retornamos toString
-            return map.toString();
+            return objectMapper.writeValueAsString(map);
         } catch (Exception e) {
             log.error("Error convirtiendo metadata a JSON", e);
             return "{}";

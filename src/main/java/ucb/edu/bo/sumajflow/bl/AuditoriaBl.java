@@ -66,7 +66,7 @@ public class AuditoriaBl {
                 .fechaOperacion(LocalDateTime.now())
                 .modulo(modulo)
                 .nivelCriticidad(nivelCriticidad != null ? nivelCriticidad : determinarCriticidad(tabla, accion))
-                .operacionExitosa(true) // Siempre exitoso si no hay rollback
+                .operacionExitosa(true)
                 .build();
 
         auditoriaRepository.save(auditoria);

@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.AuditoriaLotes;
+import ucb.edu.bo.sumajflow.entity.Lotes;
 
 import java.util.List;
 
@@ -21,4 +22,5 @@ public interface AuditoriaLotesRepository extends JpaRepository<AuditoriaLotes, 
             @Param("loteId") Integer loteId,
             @Param("limit") int limit
     );
+    List<AuditoriaLotes> findByLoteIdOrderByFechaRegistroDesc(Lotes loteId);
 }

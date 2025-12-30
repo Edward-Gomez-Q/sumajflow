@@ -402,10 +402,11 @@ public class SectoresBl {
     ) {
         sector.setNombre(dto.getNombre());
         sector.setColor(dto.getColor());
-
-        sectoresCoordenadasRepository.deleteBySectoresId(sector);
-        sectoresCoordenadasRepository.saveAll(coordenadasNuevas);
-        sectoresRepository.save(sector);
+        sector.getCoordenadasList().clear();
+        sectoresRepository.saveAndFlush(sector);
+        coordenadasNuevas.forEach(c -> c.setSectoresId(sector));
+        List<SectoresCoordenadas> coordenadasGuardadas = sectoresCoordenadasRepository.saveAll(coordenadasNuevas);
+        sector.getCoordenadasList().addAll(coordenadasGuardadas);
     }
 
     /**

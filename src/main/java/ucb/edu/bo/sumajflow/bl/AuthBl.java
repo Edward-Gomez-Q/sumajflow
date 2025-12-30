@@ -16,6 +16,7 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -271,8 +272,10 @@ public class AuthBl {
 
             // 5.2 Crear relaciones planta-procesos
             if (dto.getIngenio().getPlanta().getProcesos() != null) {
-                dto.getIngenio().getPlanta().getProcesos()
-                        .forEach(procesoDto -> createPlantaProceso(planta, procesoDto.getId()));
+                List<ProcesoDto> procesos = dto.getIngenio().getPlanta().getProcesos();
+                for (int i = 0; i < procesos.size(); i++) {
+                    createPlantaProceso(planta, procesos.get(i).getId(), i + 1);
+                }
             }
         }
 
@@ -526,7 +529,7 @@ public class AuthBl {
         );
     }
 
-    private ProcesosPlanta createPlantaProceso(Planta planta, Integer procesoId) {
+    private ProcesosPlanta createPlantaProceso(Planta planta, Integer procesoId, Integer orden) {
         Procesos proceso = procesosRepository.findById(procesoId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Proceso no encontrado con ID: " + procesoId));
@@ -535,6 +538,7 @@ public class AuthBl {
                 ProcesosPlanta.builder()
                         .plantaId(planta)
                         .procesosId(proceso)
+                        .orden(orden)
                         .build()
         );
     }
