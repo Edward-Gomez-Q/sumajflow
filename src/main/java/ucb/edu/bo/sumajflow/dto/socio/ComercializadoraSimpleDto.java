@@ -18,6 +18,8 @@ public class ComercializadoraSimpleDto {
     private String departamento;
     private String municipio;
     private String direccion;
-    private BigDecimal latitud;
-    private BigDecimal longitud;
+    private BigDecimal latitudAlmacen;
+    private BigDecimal longitudAlmacen;
+    private BigDecimal latitudBalanza;
+    private BigDecimal longitudBalanza;
 }

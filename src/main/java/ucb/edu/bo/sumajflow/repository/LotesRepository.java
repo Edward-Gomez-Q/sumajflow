@@ -55,4 +55,105 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
           @Param("minaId") Integer minaId,
           Pageable pageable
   );
+  /**
+   * Verifica si existen lotes en proceso (no finalizados) para un ingenio específico
+   * Los estados finales son: 'Completado' y 'Rechazado'
+   */
+  @Query(value = """
+        SELECT COUNT(l.id) > 0
+        FROM lotes l
+        INNER JOIN lote_ingenio li ON l.id = li.lotes_id
+        WHERE li.ingenio_minero_id = :ingenioId
+        AND l.estado NOT IN ('Completado', 'Rechazado')
+        """, nativeQuery = true)
+  boolean existenLotesEnProcesoParaIngenio(@Param("ingenioId") Integer ingenioId);
+
+  /**
+   * Verifica si existen lotes en proceso (no finalizados) para una comercializadora específica
+   * Los estados finales son: 'Completado' y 'Rechazado'
+   */
+  @Query(value = """
+        SELECT COUNT(l.id) > 0
+        FROM lotes l
+        INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
+        WHERE lc.comercializadora_id = :comercializadoraId
+        AND l.estado NOT IN ('Completado', 'Rechazado')
+        """, nativeQuery = true)
+  boolean existenLotesEnProcesoParaComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
+
+  /**
+   * Obtiene los lotes en proceso para un ingenio (para mostrar detalles)
+   */
+  @Query(value = """
+        SELECT l.*
+        FROM lotes l
+        INNER JOIN lote_ingenio li ON l.id = li.lotes_id
+        WHERE li.ingenio_minero_id = :ingenioId
+        AND l.estado NOT IN ('Completado', 'Rechazado')
+        ORDER BY l.fecha_creacion DESC
+        """, nativeQuery = true)
+  List<Lotes> obtenerLotesEnProcesoParaIngenio(@Param("ingenioId") Integer ingenioId);
+
+  /**
+   * Obtiene los lotes en proceso para una comercializadora (para mostrar detalles)
+   */
+  @Query(value = """
+        SELECT l.*
+        FROM lotes l
+        INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
+        WHERE lc.comercializadora_id = :comercializadoraId
+        AND l.estado NOT IN ('Completado', 'Rechazado')
+        ORDER BY l.fecha_creacion DESC
+        """, nativeQuery = true)
+  List<Lotes> obtenerLotesEnProcesoParaComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
+
+  /**
+   * Calcula la ocupación total del almacén de un ingenio
+   * Suma el peso de todos los lotes que están almacenados (estados que indican presencia física)
+   */
+  @Query(value = """
+        SELECT COALESCE(SUM(l.peso_total_real), 0)
+        FROM lotes l
+        INNER JOIN lote_ingenio li ON l.id = li.lotes_id
+        WHERE li.ingenio_minero_id = :ingenioId
+        AND l.estado IN ('En Almacén', 'En Procesamiento', 'Procesado')
+        """, nativeQuery = true)
+  Double calcularOcupacionAlmacenIngenio(@Param("ingenioId") Integer ingenioId);
+
+  /**
+   * Calcula la ocupación total del almacén de una comercializadora
+   * Suma el peso de todos los lotes que están almacenados
+   */
+  @Query(value = """
+        SELECT COALESCE(SUM(l.peso_total_real), 0)
+        FROM lotes l
+        INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
+        WHERE lc.comercializadora_id = :comercializadoraId
+        AND l.estado IN ('En Almacén', 'Pendiente Despacho')
+        """, nativeQuery = true)
+  Double calcularOcupacionAlmacenComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
+
+  /**
+   * Cuenta los lotes almacenados en un ingenio
+   */
+  @Query(value = """
+        SELECT COUNT(l.id)
+        FROM lotes l
+        INNER JOIN lote_ingenio li ON l.id = li.lotes_id
+        WHERE li.ingenio_minero_id = :ingenioId
+        AND l.estado IN ('En Almacén', 'En Procesamiento', 'Procesado')
+        """, nativeQuery = true)
+  Integer contarLotesAlmacenadosIngenio(@Param("ingenioId") Integer ingenioId);
+
+  /**
+   * Cuenta los lotes almacenados en una comercializadora
+   */
+  @Query(value = """
+        SELECT COUNT(l.id)
+        FROM lotes l
+        INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
+        WHERE lc.comercializadora_id = :comercializadoraId
+        AND l.estado IN ('En Almacén', 'Pendiente Despacho')
+        """, nativeQuery = true)
+  Integer contarLotesAlmacenadosComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
 }

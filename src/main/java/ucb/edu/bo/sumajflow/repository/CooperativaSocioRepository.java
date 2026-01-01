@@ -8,7 +8,6 @@ import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.Cooperativa;
 import ucb.edu.bo.sumajflow.entity.CooperativaSocio;
 import ucb.edu.bo.sumajflow.entity.Socio;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -138,4 +137,10 @@ public interface CooperativaSocioRepository extends JpaRepository<CooperativaSoc
      */
     @Query("SELECT cs FROM CooperativaSocio cs WHERE cs.socioId = :socio ORDER BY cs.fechaAfiliacion DESC")
     List<CooperativaSocio> findAllBySocio(@Param("socio") Socio socio);
+
+    /**
+     * Buscar Cooperativa por Socio
+     */
+    @Query("SELECT cs.cooperativaId FROM CooperativaSocio cs WHERE cs.socioId = :socio")
+    Optional<Cooperativa> findCooperativaBySocio(@Param("socio") Socio socio);
 }

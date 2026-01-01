@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.dto.CooperativaDto;
+import ucb.edu.bo.sumajflow.dto.socio.CooperativaBalanzaDto;
 import ucb.edu.bo.sumajflow.dto.socio.SocioAprobacionDto;
 import ucb.edu.bo.sumajflow.dto.socio.SocioResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.SociosPaginadosDto;
@@ -51,6 +53,18 @@ public class CooperativaBl {
 
         return cooperativaRepository.findByUsuariosId(usuario)
                 .orElseThrow(() -> new IllegalArgumentException("Cooperativa no encontrada para este usuario"));
+    }
+    /**
+     * Obtiene la cooperativa asociada a un socio
+     */
+    @Transactional(readOnly = true)
+    public Cooperativa obtenerCooperativaPorSocio(Integer usuarioId) {
+        log.debug("Obteniendo cooperativa para socio usuario ID: {}", usuarioId);
+        Usuarios usuario = usuariosRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        Socio socio = socioRepository.findByUsuariosId(usuario)
+                .orElseThrow(() -> new IllegalArgumentException("Socio no encontrado para este usuario"));
+        return cooperativaSocioRepository.findCooperativaBySocio(socio).orElseThrow(() -> new IllegalArgumentException("CooperativaSocio no encontrado para este socio"));
     }
 
     /**
@@ -476,5 +490,21 @@ public class CooperativaBl {
             dto.setFechaAfiliacion(cooperativaSocio.getFechaAfiliacion());
         }
         dto.setObservaciones(cooperativaSocio.getObservaciones());
+    }
+
+
+    public CooperativaBalanzaDto convertToDtoBalanza(Cooperativa cooperativa) {
+        CooperativaBalanzaDto dto = new CooperativaBalanzaDto();
+        dto.setId(cooperativa.getId());
+        dto.setRazonSocial(cooperativa.getRazonSocial());
+        dto.setNit(cooperativa.getNit());
+        dto.setCorreoContacto(cooperativa.getCorreoContacto());
+        dto.setNumeroTelefonoMovil(cooperativa.getNumeroTelefonoMovil());
+        dto.setDepartamento(cooperativa.getDepartamento());
+        dto.setMunicipio(cooperativa.getMunicipio());
+        dto.setDireccion(cooperativa.getDireccion());
+        dto.setLatitudBalanza(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
+        dto.setLongitudBalanza(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
+        return dto;
     }
 }

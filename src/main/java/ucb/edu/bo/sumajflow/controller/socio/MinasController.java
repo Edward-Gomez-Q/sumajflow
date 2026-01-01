@@ -11,6 +11,7 @@ import ucb.edu.bo.sumajflow.dto.socio.MinaResponseDto;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

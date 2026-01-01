@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class IngenioSimpleDto {
+public class CooperativaBalanzaDto {
     private Integer id;
     private String razonSocial;
     private String nit;
@@ -18,9 +18,6 @@ public class IngenioSimpleDto {
     private String departamento;
     private String municipio;
     private String direccion;
-    private BigDecimal latitudAlmacen;
-    private BigDecimal longitudAlmacen;
-    private BigDecimal precioTonelada;
     private BigDecimal latitudBalanza;
     private BigDecimal longitudBalanza;
 }

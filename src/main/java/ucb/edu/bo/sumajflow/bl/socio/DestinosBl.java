@@ -72,7 +72,9 @@ public class DestinosBl {
                 ingenio.getDireccion(),
                 lat,
                 lon,
-                precioTonelada
+                precioTonelada,
+                ingenio.getBalanzasIngenioList().getFirst().getLatitud(),
+                ingenio.getBalanzasIngenioList().getFirst().getLongitud()
         );
     }
 
@@ -89,7 +91,9 @@ public class DestinosBl {
                 comercializadora.getMunicipio(),
                 comercializadora.getDireccion(),
                 lat,
-                lon
+                lon,
+                comercializadora.getBalanzasList().getFirst().getLatitud(),
+                comercializadora.getBalanzasList().getFirst().getLongitud()
         );
     }
 }
