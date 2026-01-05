@@ -54,8 +54,8 @@ public class Lotes implements Serializable {
     private String tipoMineral;
 
     @NotNull
-    @Size(min = 1, max = 50)
-    @Column(name = "estado", nullable = false, length = 50)
+    @Size(min = 1, max = 70)
+    @Column(name = "estado", nullable = false, length = 70)
     private String estado;
 
     @Column(name = "fecha_creacion")

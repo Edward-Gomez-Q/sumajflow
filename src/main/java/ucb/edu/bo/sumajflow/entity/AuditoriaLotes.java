@@ -33,13 +33,13 @@ public class AuditoriaLotes implements Serializable {
     @Column(name = "tipo_usuario", length = 50)
     private String tipoUsuario;
 
-    @Size(max = 50)
-    @Column(name = "estado_anterior", length = 50)
+    @Size(max = 70)
+    @Column(name = "estado_anterior", length = 70)
     private String estadoAnterior;
 
     @NotNull
-    @Size(min = 1, max = 50)
-    @Column(name = "estado_nuevo", nullable = false, length = 50)
+    @Size(min = 1, max = 70)
+    @Column(name = "estado_nuevo", nullable = false, length = 70)
     private String estadoNuevo;
 
     @NotNull

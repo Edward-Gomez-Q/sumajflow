@@ -27,8 +27,8 @@ public class LoteComercializadora implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Size(max = 50)
-    @Column(name = "estado", length = 50)
+    @Size(max = 70)
+    @Column(name = "estado", length = 70)
     private String estado;
 
     @Column(name = "fecha_aprobacion")

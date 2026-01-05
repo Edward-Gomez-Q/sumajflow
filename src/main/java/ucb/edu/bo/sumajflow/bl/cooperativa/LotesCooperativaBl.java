@@ -366,7 +366,7 @@ public class LotesCooperativaBl {
     private void notificarAlDestino(Lotes lote) {
         Integer destinoUsuarioId = null;
 
-        if (lote.getTipoOperacion().equals("procesamiento_planta")) {
+        if("procesamiento_planta".equals(lote.getTipoOperacion())) {
             LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote)
                     .orElseThrow(() -> new IllegalArgumentException("Relación lote-ingenio no encontrada"));
             destinoUsuarioId = loteIngenio.getIngenioMineroId().getUsuariosId().getId();

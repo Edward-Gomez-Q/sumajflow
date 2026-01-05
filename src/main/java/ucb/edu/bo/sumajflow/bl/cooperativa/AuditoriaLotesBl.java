@@ -137,7 +137,7 @@ public class AuditoriaLotesBl {
                 loteId,
                 "cooperativa",
                 null,
-                null,
+                "Pendiente de iniciar transporte",
                 "ASIGNAR_TRANSPORTISTA",
                 "Transportista asignado al lote - Camión #" + numeroCamion,
                 null,
