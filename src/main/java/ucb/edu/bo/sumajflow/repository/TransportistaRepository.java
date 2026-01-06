@@ -21,12 +21,8 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
 
     boolean existsByPlacaVehiculo(String placa);
 
-    /**
-     * ✅ ACTUALIZADO: Buscar transportistas con filtros - Query nativo
-     * Ahora usa JOIN con invitacion_cooperativa
-     */
     @Query(value =
-            "SELECT DISTINCT t.* FROM transportista t " +
+            "SELECT t.* FROM transportista t " +
                     "INNER JOIN invitacion_transportista it ON t.invitacion_transportista_id = it.id " +
                     "INNER JOIN invitacion_cooperativa ic ON it.id = ic.invitacion_transportista_id " +
                     "WHERE ic.cooperativa_id = :cooperativaId " +
@@ -54,6 +50,7 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
             @Param("offset") int offset,
             @Param("limit") int limit
     );
+
 
     /**
      * ✅ ACTUALIZADO: Contar total

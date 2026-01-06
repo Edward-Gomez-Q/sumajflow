@@ -15,6 +15,7 @@ import ucb.edu.bo.sumajflow.repository.UsuariosRepository;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,6 +29,76 @@ public class NotificacionBl {
     private final UsuariosRepository usuariosRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+
+
+    /**
+     * Obtiene notificaciones paginadas con filtros
+     * @param usuarioId ID del usuario
+     * @param soloNoLeidas Filtrar solo no leídas
+     * @param tipo Filtrar por tipo (info, success, warning, error)
+     * @param page Número de página (0-indexed)
+     * @param size Elementos por página
+     * @return Map con notificaciones y metadata de paginación
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> obtenerNotificacionesPaginadas(
+            Integer usuarioId,
+            Boolean soloNoLeidas,
+            String tipo,
+            Integer page,
+            Integer size) {
+
+        log.debug("Obteniendo notificaciones paginadas - Usuario: {}, Página: {}, Tamaño: {}",
+                usuarioId, page, size);
+
+        Usuarios usuario = usuariosRepository.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+
+        // Obtener todas las notificaciones (sin paginación en repository)
+        List<Notificacion> todasLasNotificaciones = notificacionRepository
+                .findByUsuariosIdOrderByFechaCreacionDesc(usuario);
+
+        // Aplicar filtros
+        List<Notificacion> notificacionesFiltradas = todasLasNotificaciones.stream()
+                .filter(n -> {
+                    // Filtro de leído/no leído
+                    if (Boolean.TRUE.equals(soloNoLeidas) && n.getLeido()) {
+                        return false;
+                    }
+                    // Filtro por tipo
+                    if (tipo != null && !tipo.isEmpty() && !tipo.equals(n.getTipo())) {
+                        return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+        // Calcular paginación
+        int totalElementos = notificacionesFiltradas.size();
+        int totalPaginas = (int) Math.ceil((double) totalElementos / size);
+        int inicio = page * size;
+        int fin = Math.min(inicio + size, totalElementos);
+
+        // Obtener página actual
+        List<NotificacionDto> notificacionesPagina = notificacionesFiltradas.stream()
+                .skip(inicio)
+                .limit(size)
+                .map(this::convertirADto)
+                .collect(Collectors.toList());
+
+        // Construir respuesta
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("notificaciones", notificacionesPagina);
+        resultado.put("totalElementos", totalElementos);
+        resultado.put("totalPaginas", totalPaginas);
+        resultado.put("paginaActual", page);
+        resultado.put("elementosPorPagina", size);
+        resultado.put("tieneSiguiente", page < totalPaginas - 1);
+        resultado.put("tieneAnterior", page > 0);
+
+        return resultado;
+    }
+
 
     /**
      * Crea y envía una notificación en tiempo real
