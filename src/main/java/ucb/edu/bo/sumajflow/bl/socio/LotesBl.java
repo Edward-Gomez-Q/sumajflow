@@ -189,6 +189,11 @@ public class LotesBl {
         dto.setTipoOperacion(lote.getTipoOperacion());
         dto.setTipoMineral(lote.getTipoMineral());
 
+        CooperativaSocio invitacionCooperativa = socio.getCooperativaSocioList().getFirst();
+        Cooperativa cooperativa = invitacionCooperativa.getCooperativaId();
+        dto.setCooperativaBalanzaLatitud(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
+        dto.setCooperativaBalanzaLongitud(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
+
         Minas mina = lote.getMinasId();
         dto.setMinaId(mina.getId());
         dto.setMinaNombre(mina.getNombre());
@@ -219,8 +224,10 @@ public class LotesBl {
                 dto.setDestinoDepartamento(ingenio.getDepartamento());
                 dto.setDestinoMunicipio(ingenio.getMunicipio());
                 dto.setDestinoTelefono(ingenio.getNumeroTelefonoMovil());
-                dto.setDestinoLatitud(ingenio.getAlmacenesIngenioList().getFirst().getLatitud());
-                dto.setDestinoLongitud(ingenio.getAlmacenesIngenioList().getFirst().getLongitud());
+                dto.setDestinoAlmacenLatitud(ingenio.getAlmacenesIngenioList().getFirst().getLatitud());
+                dto.setDestinoAlmacenLongitud(ingenio.getAlmacenesIngenioList().getFirst().getLongitud());
+                dto.setDestinoBalanzaLatitud(ingenio.getBalanzasIngenioList().getFirst().getLatitud());
+                dto.setDestinoBalanzaLongitud(ingenio.getBalanzasIngenioList().getFirst().getLongitud());
             }
         } else {
             LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
@@ -234,8 +241,10 @@ public class LotesBl {
                 dto.setDestinoDepartamento(comercializadora.getDepartamento());
                 dto.setDestinoMunicipio(comercializadora.getMunicipio());
                 dto.setDestinoTelefono(comercializadora.getNumeroTelefonoMovil());
-                dto.setDestinoLatitud(comercializadora.getAlmacenesList().getFirst().getLatitud());
-                dto.setDestinoLongitud(comercializadora.getAlmacenesList().getFirst().getLongitud());
+                dto.setDestinoAlmacenLatitud(comercializadora.getAlmacenesList().getFirst().getLatitud());
+                dto.setDestinoAlmacenLongitud(comercializadora.getAlmacenesList().getFirst().getLongitud());
+                dto.setDestinoBalanzaLatitud(comercializadora.getBalanzasList().getFirst().getLatitud());
+                dto.setDestinoBalanzaLongitud(comercializadora.getBalanzasList().getFirst().getLongitud());
             }
         }
 

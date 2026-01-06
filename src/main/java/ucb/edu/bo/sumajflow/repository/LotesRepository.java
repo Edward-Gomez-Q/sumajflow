@@ -156,4 +156,53 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
         AND l.estado IN ('En Almacén', 'Pendiente Despacho')
         """, nativeQuery = true)
   Integer contarLotesAlmacenadosComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
+
+  /**
+   * Obtiene los lotes de una cooperativa con filtros y paginación
+   * Busca todos los lotes cuyas minas pertenezcan a sectores de la cooperativa
+   */
+  @Query(value = """
+        SELECT l.*
+        FROM lotes l
+        INNER JOIN minas m ON l.minas_id = m.id
+        INNER JOIN sectores s ON m.sectores_id = s.id
+        WHERE s.cooperativa_id = :cooperativaId
+        AND (CAST(:estado AS TEXT) IS NULL OR l.estado = CAST(:estado AS TEXT))
+        AND (CAST(:tipoOperacion AS TEXT) IS NULL OR l.tipo_operacion = CAST(:tipoOperacion AS TEXT))
+        AND (CAST(:tipoMineral AS TEXT) IS NULL OR l.tipo_mineral = CAST(:tipoMineral AS TEXT))
+        AND (CAST(:fechaDesde AS TIMESTAMP) IS NULL OR l.fecha_creacion >= CAST(:fechaDesde AS TIMESTAMP))
+        AND (CAST(:fechaHasta AS TIMESTAMP) IS NULL OR l.fecha_creacion <= CAST(:fechaHasta AS TIMESTAMP))
+        AND (CAST(:socioId AS INTEGER) IS NULL OR m.socio_id = CAST(:socioId AS INTEGER))
+        AND (CAST(:minaId AS INTEGER) IS NULL OR l.minas_id = CAST(:minaId AS INTEGER))
+        AND (CAST(:sectorId AS INTEGER) IS NULL OR s.id = CAST(:sectorId AS INTEGER))
+        """,
+          countQuery = """
+        SELECT COUNT(l.id)
+        FROM lotes l
+        INNER JOIN minas m ON l.minas_id = m.id
+        INNER JOIN sectores s ON m.sectores_id = s.id
+        WHERE s.cooperativa_id = :cooperativaId
+        AND (CAST(:estado AS TEXT) IS NULL OR l.estado = CAST(:estado AS TEXT))
+        AND (CAST(:tipoOperacion AS TEXT) IS NULL OR l.tipo_operacion = CAST(:tipoOperacion AS TEXT))
+        AND (CAST(:tipoMineral AS TEXT) IS NULL OR l.tipo_mineral = CAST(:tipoMineral AS TEXT))
+        AND (CAST(:fechaDesde AS TIMESTAMP) IS NULL OR l.fecha_creacion >= CAST(:fechaDesde AS TIMESTAMP))
+        AND (CAST(:fechaHasta AS TIMESTAMP) IS NULL OR l.fecha_creacion <= CAST(:fechaHasta AS TIMESTAMP))
+        AND (CAST(:socioId AS INTEGER) IS NULL OR m.socio_id = CAST(:socioId AS INTEGER))
+        AND (CAST(:minaId AS INTEGER) IS NULL OR l.minas_id = CAST(:minaId AS INTEGER))
+        AND (CAST(:sectorId AS INTEGER) IS NULL OR s.id = CAST(:sectorId AS INTEGER))
+        """,
+          nativeQuery = true)
+  Page<Lotes> findLotesByCooperativaWithFilters(
+          @Param("cooperativaId") Integer cooperativaId,
+          @Param("estado") String estado,
+          @Param("tipoOperacion") String tipoOperacion,
+          @Param("tipoMineral") String tipoMineral,
+          @Param("fechaDesde") LocalDateTime fechaDesde,
+          @Param("fechaHasta") LocalDateTime fechaHasta,
+          @Param("socioId") Integer socioId,
+          @Param("minaId") Integer minaId,
+          @Param("sectorId") Integer sectorId,
+          Pageable pageable
+  );
+
 }

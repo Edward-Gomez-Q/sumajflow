@@ -19,6 +19,9 @@ public class LoteDetalleDto {
     private String tipoOperacion;
     private String tipoMineral;
 
+    private BigDecimal cooperativaBalanzaLatitud;
+    private BigDecimal cooperativaBalanzaLongitud;
+
     private Integer minaId;
     private String minaNombre;
     private String minaFotoUrl;
@@ -36,8 +39,10 @@ public class LoteDetalleDto {
     private String destinoDepartamento;
     private String destinoMunicipio;
     private String destinoTelefono;
-    private BigDecimal destinoLatitud;
-    private BigDecimal destinoLongitud;
+    private BigDecimal destinoBalanzaLatitud;
+    private BigDecimal destinoBalanzaLongitud;
+    private BigDecimal destinoAlmacenLatitud;
+    private BigDecimal destinoAlmacenLongitud;
 
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaAprobacionCooperativa;
