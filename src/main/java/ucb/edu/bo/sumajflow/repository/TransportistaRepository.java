@@ -80,6 +80,13 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
             "    WHERE ic.invitacionTransportista.id = t.invitacionTransportista.id " +
             "    AND ic.cooperativa.id = :cooperativaId" +
             ") " +
+            "AND NOT EXISTS (" +
+            "    SELECT 1 FROM AsignacionCamion ac " +
+            "    WHERE ac.transportistaId.id = t.id " +
+            "    AND ac.estado IN ('Esperando iniciar', 'En camino a la mina', 'Esperando carguío', " +
+            "                      'En camino balanza cooperativa', 'En camino balanza destino', " +
+            "                      'En camino almacén destino', 'Descargando')" +
+            ") " +
             "ORDER BY t.calificacionPromedio DESC, t.viajesCompletados DESC")
     List<Transportista> findDisponiblesByCooperativa(@Param("cooperativaId") Integer cooperativaId);
 

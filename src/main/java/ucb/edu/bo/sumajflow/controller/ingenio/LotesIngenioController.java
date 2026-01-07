@@ -2,17 +2,16 @@ package ucb.edu.bo.sumajflow.controller.ingenio;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.ingenio.LotesIngenioBl;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteAprobacionDestinoDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LotePendienteIngenioDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteRechazoDestinoDto;
+import ucb.edu.bo.sumajflow.dto.ingenio.*;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -25,18 +24,39 @@ public class LotesIngenioController {
     private final JwtUtil jwtUtil;
 
     /**
-     * Obtener lotes pendientes de aprobación por el ingenio
-     * GET /ingenio/lotes/pendientes
+     * Obtener lotes con paginación y filtros
+     * GET /ingenio/lotes
      */
-    @GetMapping("/pendientes")
-    public ResponseEntity<Map<String, Object>> getLotesPendientes(
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> getLotes(
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) String tipoMineral,
+            @RequestParam(required = false) String cooperativaNombre,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaHasta,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "fechaCreacion") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir,
             @RequestHeader("Authorization") String token
     ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            List<LotePendienteIngenioDto> lotes = lotesIngenioBl.getLotesPendientesIngenio(usuarioId);
+
+            LoteFiltrosIngenioDto filtros = new LoteFiltrosIngenioDto();
+            filtros.setEstado(estado);
+            filtros.setTipoMineral(tipoMineral);
+            filtros.setCooperativaNombre(cooperativaNombre);
+            filtros.setFechaDesde(fechaDesde);
+            filtros.setFechaHasta(fechaHasta);
+            filtros.setPage(page);
+            filtros.setSize(size);
+            filtros.setSortBy(sortBy);
+            filtros.setSortDir(sortDir);
+
+            LotesIngenioPaginadosDto lotes = lotesIngenioBl.getLotesIngenioPaginados(usuarioId, filtros);
 
             response.put("success", true);
             response.put("data", lotes);
@@ -68,7 +88,7 @@ public class LotesIngenioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            LotePendienteIngenioDto lote = lotesIngenioBl.getDetalleLote(id, usuarioId);
+            LoteDetalleIngenioDto lote = lotesIngenioBl.getLoteDetalleCompleto(id, usuarioId);
 
             response.put("success", true);
             response.put("data", lote);
@@ -90,11 +110,6 @@ public class LotesIngenioController {
     /**
      * Aprobar lote desde el ingenio
      * PUT /ingenio/lotes/{id}/aprobar
-     *
-     * Body ejemplo:
-     * {
-     *   "observaciones": "Aprobado para procesar"
-     * }
      */
     @PutMapping("/{id}/aprobar")
     public ResponseEntity<Map<String, Object>> aprobarLote(
@@ -113,7 +128,7 @@ public class LotesIngenioController {
             String metodoHttp = request.getMethod();
             String endpoint = request.getRequestURI();
 
-            LotePendienteIngenioDto lote = lotesIngenioBl.aprobarLote(
+            LoteDetalleIngenioDto lote = lotesIngenioBl.aprobarLote(
                     id,
                     aprobacionDto,
                     usuarioId,
@@ -143,11 +158,6 @@ public class LotesIngenioController {
     /**
      * Rechazar lote desde el ingenio
      * PUT /ingenio/lotes/{id}/rechazar
-     *
-     * Body ejemplo:
-     * {
-     *   "motivoRechazo": "No contamos con capacidad en este momento"
-     * }
      */
     @PutMapping("/{id}/rechazar")
     public ResponseEntity<Map<String, Object>> rechazarLote(

@@ -2,14 +2,18 @@ package ucb.edu.bo.sumajflow.bl.ingenio;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
-import ucb.edu.bo.sumajflow.dto.cooperativa.TransportistaAsignadoDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteAprobacionDestinoDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LotePendienteIngenioDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteRechazoDestinoDto;
+import ucb.edu.bo.sumajflow.dto.ingenio.*;
+import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
+import ucb.edu.bo.sumajflow.dto.socio.AuditoriaLoteDto;
+import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -30,56 +34,91 @@ public class LotesIngenioBl {
     private final IngenioMineroRepository ingenioMineroRepository;
     private final UsuariosRepository usuariosRepository;
     private final PersonaRepository personaRepository;
+    private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesBl auditoriaLotesBl;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
     private static final String ESTADO_APROBADO = "Aprobado - Pendiente de iniciar";
-    private static final String ESTADO_RECHAZADO = "Rechazado por destino";
+    private static final String ESTADO_RECHAZADO = "Rechazado";
 
     /**
-     * Obtener lotes pendientes de aprobación por el ingenio
+     * Obtener lotes con paginación y filtros
      */
     @Transactional(readOnly = true)
-    public List<LotePendienteIngenioDto> getLotesPendientesIngenio(Integer usuarioId) {
-        log.debug("Obteniendo lotes pendientes para ingenio - Usuario ID: {}", usuarioId);
+    public LotesIngenioPaginadosDto getLotesIngenioPaginados(
+            Integer usuarioId,
+            LoteFiltrosIngenioDto filtros
+    ) {
+        log.debug("Obteniendo lotes para ingenio con filtros - Usuario ID: {}", usuarioId);
 
         // Obtener ingenio del usuario
         IngenioMinero ingenio = obtenerIngenioDelUsuario(usuarioId);
 
-        // Buscar lotes pendientes para este ingenio
-        List<LoteIngenio> lotesIngenio = loteIngenioRepository.findAll().stream()
-                .filter(li -> li.getIngenioMineroId().getId().equals(ingenio.getId()))
-                .filter(li -> li.getEstado().equals(ESTADO_PENDIENTE_DESTINO))
+        // Normalizar filtros (empty strings → null)
+        String estado = (filtros.getEstado() != null && !filtros.getEstado().trim().isEmpty())
+                ? filtros.getEstado() : null;
+        String tipoMineral = (filtros.getTipoMineral() != null && !filtros.getTipoMineral().trim().isEmpty())
+                ? filtros.getTipoMineral() : null;
+        String cooperativaNombre = (filtros.getCooperativaNombre() != null && !filtros.getCooperativaNombre().trim().isEmpty())
+                ? filtros.getCooperativaNombre() : null;
+
+        // Configurar ordenamiento
+        String sortByField = convertirCamelCaseASnakeCase(filtros.getSortBy());
+        Sort sort = filtros.getSortDir().equalsIgnoreCase("asc")
+                ? Sort.by(sortByField).ascending()
+                : Sort.by(sortByField).descending();
+        Pageable pageable = PageRequest.of(filtros.getPage(), filtros.getSize(), sort);
+
+        // Ejecutar consulta
+        Page<LoteIngenio> lotesPage = loteIngenioRepository.findLotesByIngenioWithFilters(
+                ingenio.getId(),
+                estado,
+                tipoMineral,
+                cooperativaNombre,
+                filtros.getFechaDesde(),
+                filtros.getFechaHasta(),
+                pageable
+        );
+
+        // Convertir a DTOs
+        List<LoteIngenioResponseDto> lotesDto = lotesPage.getContent().stream()
+                .map(this::convertToIngenioResponseDto)
                 .collect(Collectors.toList());
 
-        log.info("Se encontraron {} lotes pendientes para ingenio", lotesIngenio.size());
+        log.info("Se encontraron {} lotes para ingenio", lotesPage.getTotalElements());
 
-        return lotesIngenio.stream()
-                .map(this::convertToPendienteDto)
-                .collect(Collectors.toList());
+        return new LotesIngenioPaginadosDto(
+                lotesDto,
+                lotesPage.getTotalElements(),
+                lotesPage.getTotalPages(),
+                lotesPage.getNumber(),
+                lotesPage.getSize(),
+                lotesPage.hasNext(),
+                lotesPage.hasPrevious()
+        );
     }
 
     /**
      * Obtener detalle completo de un lote
      */
     @Transactional(readOnly = true)
-    public LotePendienteIngenioDto getDetalleLote(Integer loteId, Integer usuarioId) {
-        log.debug("Obteniendo detalle del lote ID: {} para ingenio", loteId);
+    public LoteDetalleIngenioDto getLoteDetalleCompleto(Integer loteId, Integer usuarioId) {
+        log.debug("Obteniendo detalle completo del lote ID: {} para ingenio", loteId);
 
         // Validar permisos
         IngenioMinero ingenio = obtenerIngenioDelUsuario(usuarioId);
         LoteIngenio loteIngenio = obtenerLoteIngenioConPermisos(loteId, ingenio);
 
-        return convertToPendienteDto(loteIngenio);
+        return convertToDetalleCompletoDto(loteIngenio, ingenio);
     }
 
     /**
      * Aprobar lote desde el ingenio
      */
     @Transactional
-    public LotePendienteIngenioDto aprobarLote(
+    public LoteDetalleIngenioDto aprobarLote(
             Integer loteId,
             LoteAprobacionDestinoDto aprobacionDto,
             Integer usuarioId,
@@ -94,17 +133,18 @@ public class LotesIngenioBl {
         LoteIngenio loteIngenio = obtenerLoteIngenioConPermisos(loteId, ingenio);
         Lotes lote = loteIngenio.getLotesId();
 
-        validarEstadoPendiente(loteIngenio);
+        validarEstadoPendiente(lote);
 
         String estadoAnterior = lote.getEstado();
 
         // 2. Actualizar estado del lote
         lote.setEstado(ESTADO_APROBADO);
         lote.setFechaAprobacionDestino(LocalDateTime.now());
-        if (aprobacionDto.getObservaciones() != null) {
+        if (aprobacionDto.getObservaciones() != null && !aprobacionDto.getObservaciones().trim().isEmpty()) {
+            String nuevaObservacion = "Ingenio: " + aprobacionDto.getObservaciones();
             lote.setObservaciones(lote.getObservaciones() != null
-                    ? lote.getObservaciones() + " | Ingenio: " + aprobacionDto.getObservaciones()
-                    : "Ingenio: " + aprobacionDto.getObservaciones());
+                    ? lote.getObservaciones() + " | " + nuevaObservacion
+                    : nuevaObservacion);
         }
         lotesRepository.save(lote);
 
@@ -124,7 +164,7 @@ public class LotesIngenioBl {
 
         log.info("Lote aprobado por ingenio exitosamente - ID: {}", loteId);
 
-        return convertToPendienteDto(loteIngenio);
+        return convertToDetalleCompletoDto(loteIngenio, ingenio);
     }
 
     /**
@@ -146,7 +186,7 @@ public class LotesIngenioBl {
         LoteIngenio loteIngenio = obtenerLoteIngenioConPermisos(loteId, ingenio);
         Lotes lote = loteIngenio.getLotesId();
 
-        validarEstadoPendiente(loteIngenio);
+        validarEstadoPendiente(lote);
 
         if (rechazoDto.getMotivoRechazo() == null || rechazoDto.getMotivoRechazo().trim().isEmpty()) {
             throw new IllegalArgumentException("El motivo de rechazo es requerido");
@@ -156,9 +196,10 @@ public class LotesIngenioBl {
 
         // 2. Actualizar estado del lote
         lote.setEstado(ESTADO_RECHAZADO);
-        lote.setObservaciones(
-                "RECHAZADO POR INGENIO: " + rechazoDto.getMotivoRechazo() +
-                        (lote.getObservaciones() != null ? " | " + lote.getObservaciones() : "")
+        String motivoCompleto = "RECHAZADO POR INGENIO: " + rechazoDto.getMotivoRechazo();
+        lote.setObservaciones(lote.getObservaciones() != null
+                ? motivoCompleto + " | " + lote.getObservaciones()
+                : motivoCompleto
         );
         lotesRepository.save(lote);
 
@@ -167,6 +208,7 @@ public class LotesIngenioBl {
         loteIngenio.setObservaciones(rechazoDto.getMotivoRechazo());
         loteIngenioRepository.save(loteIngenio);
 
+        actualizarEstadoCamionesRechazados(lote);
         // 4. Registrar en auditoría
         registrarAuditoriaRechazo(
                 loteId,
@@ -181,13 +223,38 @@ public class LotesIngenioBl {
 
         log.info("Lote rechazado por ingenio - ID: {}", loteId);
     }
+    /**
+     * Actualizar estado de los camiones asignados cuando se rechaza un lote
+     */
+    private void actualizarEstadoCamionesRechazados(Lotes lote) {
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+
+        if (asignaciones.isEmpty()) {
+            log.debug("No hay asignaciones de camiones para el lote ID: {}", lote.getId());
+            return;
+        }
+
+        log.info("Actualizando estado de {} camiones asignados al lote rechazado ID: {}",
+                asignaciones.size(), lote.getId());
+
+        for (AsignacionCamion asignacion : asignaciones) {
+            String estadoAnterior = asignacion.getEstado();
+
+            // Cambiar estado a "Cancelado por rechazo"
+            asignacion.setEstado("Cancelado por rechazo");
+            asignacionCamionRepository.save(asignacion);
+
+            log.debug("Camión #{} actualizado de '{}' a 'Cancelado por rechazo'",
+                    asignacion.getNumeroCamion(), estadoAnterior);
+        }
+    }
 
     // ==================== MÉTODOS DE VALIDACIÓN ====================
 
-    private void validarEstadoPendiente(LoteIngenio loteIngenio) {
-        if (!loteIngenio.getEstado().equals(ESTADO_PENDIENTE_DESTINO)) {
+    private void validarEstadoPendiente(Lotes lote) {
+        if (!lote.getEstado().equals(ESTADO_PENDIENTE_DESTINO)) {
             throw new IllegalArgumentException(
-                    "El lote no está en estado pendiente de aprobación"
+                    "El lote no está en estado pendiente de aprobación por destino"
             );
         }
     }
@@ -332,26 +399,58 @@ public class LotesIngenioBl {
         return loteIngenio;
     }
 
+    private String convertirCamelCaseASnakeCase(String camelCase) {
+        if (camelCase == null || camelCase.isEmpty()) return "l.fecha_creacion";
+
+        return switch (camelCase) {
+            case "fechaCreacion" -> "l.fecha_creacion";
+            case "fechaAprobacionCooperativa" -> "l.fecha_aprobacion_cooperativa";
+            case "fechaAprobacionDestino" -> "l.fecha_aprobacion_destino";
+            case "estado" -> "l.estado";
+            case "tipoMineral" -> "l.tipo_mineral";
+            case "pesoTotalEstimado" -> "l.peso_total_estimado";
+            default -> "l." + camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+        };
+    }
+
     // ==================== MÉTODOS DE CONVERSIÓN DTO ====================
 
-    private LotePendienteIngenioDto convertToPendienteDto(LoteIngenio loteIngenio) {
-        LotePendienteIngenioDto dto = new LotePendienteIngenioDto();
+    private LoteIngenioResponseDto convertToIngenioResponseDto(LoteIngenio loteIngenio) {
+        LoteIngenioResponseDto dto = new LoteIngenioResponseDto();
         Lotes lote = loteIngenio.getLotesId();
 
+        // Información básica del lote
         dto.setId(lote.getId());
-        dto.setMinaNombre(lote.getMinasId().getNombre());
+        dto.setEstado(lote.getEstado());
+        dto.setTipoMineral(lote.getTipoMineral());
+        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
+        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
+        dto.setPesoTotalReal(lote.getPesoTotalReal());
 
-        // Cooperativa
-        dto.setCooperativaNombre(
-                lote.getMinasId().getSectoresId().getCooperativaId().getRazonSocial()
-        );
+        // Información de la mina
+        Minas mina = lote.getMinasId();
+        dto.setMinaId(mina.getId());
+        dto.setMinaNombre(mina.getNombre());
 
-        // Socio
-        Persona persona = personaRepository.findByUsuariosId(
-                lote.getMinasId().getSocioId().getUsuariosId()
-        ).orElse(null);
+        // Información del sector
+        Sectores sector = mina.getSectoresId();
+        dto.setSectorId(sector.getId());
+        dto.setSectorNombre(sector.getNombre());
+
+        // Información de la cooperativa
+        Cooperativa cooperativa = sector.getCooperativaId();
+        dto.setCooperativaId(cooperativa.getId());
+        dto.setCooperativaNombre(cooperativa.getRazonSocial());
+
+        // Información del socio
+        Socio socio = mina.getSocioId();
+        dto.setSocioId(socio.getId());
+
+        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
         if (persona != null) {
-            dto.setSocioNombre(persona.getNombres() + " " + persona.getPrimerApellido());
+            dto.setSocioNombres(persona.getNombres());
+            dto.setSocioApellidos(persona.getPrimerApellido() +
+                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
             dto.setSocioCi(persona.getCi());
             dto.setSocioTelefono(persona.getNumeroCelular());
         }
@@ -360,52 +459,172 @@ public class LotesIngenioBl {
         List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
         dto.setMinerales(
                 loteMinerales.stream()
-                        .map(lm -> lm.getMineralesId().getNombre())
+                        .map(lm -> new MineralInfoDto(
+                                lm.getMineralesId().getId(),
+                                lm.getMineralesId().getNombre(),
+                                lm.getMineralesId().getNomenclatura()
+                        ))
                         .collect(Collectors.toList())
         );
 
-        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
-        dto.setTipoMineral(lote.getTipoMineral());
-        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
-        dto.setEstado(lote.getEstado());
+        // Fechas
         dto.setFechaCreacion(lote.getFechaCreacion());
         dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
+        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
+
+        // Transporte
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        dto.setCamioneAsignados(asignaciones.size());
+
+        // Observaciones
         dto.setObservaciones(lote.getObservaciones());
 
-        // Transportistas asignados
-        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
-        dto.setTransportistasAsignados(
-                asignaciones.stream()
-                        .map(this::convertToTransportistaAsignadoDto)
-                        .collect(Collectors.toList())
-        );
-
-        if (!asignaciones.isEmpty()) {
-            dto.setFechaAsignacionTransporte(asignaciones.get(0).getFechaAsignacion());
-        }
+        // Metadata
+        dto.setCreatedAt(lote.getFechaCreacion());
+        dto.setUpdatedAt(lote.getUpdatedAt());
 
         return dto;
     }
 
-    private TransportistaAsignadoDto convertToTransportistaAsignadoDto(AsignacionCamion asignacion) {
-        TransportistaAsignadoDto dto = new TransportistaAsignadoDto();
+    private LoteDetalleIngenioDto convertToDetalleCompletoDto(LoteIngenio loteIngenio, IngenioMinero ingenio) {
+        LoteDetalleIngenioDto dto = new LoteDetalleIngenioDto();
+        Lotes lote = loteIngenio.getLotesId();
 
-        dto.setAsignacionId(asignacion.getId());
-        dto.setTransportistaId(asignacion.getTransportistaId().getId());
+        // Información del lote
+        dto.setId(lote.getId());
+        dto.setEstado(lote.getEstado());
+        dto.setFechaCreacion(lote.getFechaCreacion());
+        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
+        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
+        dto.setFechaInicioTransporte(lote.getFechaInicioTransporte());
+        dto.setFechaFinTransporte(lote.getFechaFinTransporte());
+        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
+        dto.setPesoTotalReal(lote.getPesoTotalReal());
+        dto.setObservaciones(lote.getObservaciones());
 
-        // Obtener nombre del transportista
-        Persona persona = personaRepository.findByUsuariosId(
-                asignacion.getTransportistaId().getUsuariosId()
-        ).orElse(null);
-        if (persona != null) {
-            dto.setNombreCompleto(persona.getNombres() + " " + persona.getPrimerApellido());
-        } else {
-            dto.setNombreCompleto("Transportista #" + asignacion.getTransportistaId().getId());
+        // Información de la mina
+        Minas mina = lote.getMinasId();
+        dto.setMinaId(mina.getId());
+        dto.setMinaNombre(mina.getNombre());
+        dto.setMinaFotoUrl(mina.getFotoUrl());
+        dto.setMinaLatitud(mina.getLatitud());
+        dto.setMinaLongitud(mina.getLongitud());
+
+        // Información del sector
+        Sectores sector = mina.getSectoresId();
+        dto.setSectorId(sector.getId());
+        dto.setSectorNombre(sector.getNombre());
+        dto.setSectorColor(sector.getColor());
+
+        // Información de la cooperativa
+        Cooperativa cooperativa = sector.getCooperativaId();
+        dto.setCooperativaId(cooperativa.getId());
+        dto.setCooperativaNombre(cooperativa.getRazonSocial());
+
+        // Balanza cooperativa
+        if (!cooperativa.getBalanzaCooperativaList().isEmpty()) {
+            dto.setCooperativaBalanzaLatitud(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
+            dto.setCooperativaBalanzaLongitud(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
         }
 
-        dto.setPlacaVehiculo(asignacion.getTransportistaId().getPlacaVehiculo());
-        dto.setNumeroCamion(asignacion.getNumeroCamion());
-        dto.setEstado(asignacion.getEstado());
+        // Información del socio
+        Socio socio = mina.getSocioId();
+        dto.setSocioId(socio.getId());
+        dto.setSocioEstado(socio.getEstado());
+
+        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
+        if (persona != null) {
+            dto.setSocioNombres(persona.getNombres());
+            dto.setSocioApellidos(persona.getPrimerApellido() +
+                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
+            dto.setSocioCi(persona.getCi());
+            dto.setSocioTelefono(persona.getNumeroCelular());
+        }
+
+        // Minerales
+        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
+        dto.setMinerales(
+                loteMinerales.stream()
+                        .map(lm -> new MineralInfoDto(
+                                lm.getMineralesId().getId(),
+                                lm.getMineralesId().getNombre(),
+                                lm.getMineralesId().getNomenclatura()
+                        ))
+                        .collect(Collectors.toList())
+        );
+
+        // Información de operación
+        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
+        dto.setTipoOperacion(lote.getTipoOperacion());
+        dto.setTipoMineral(lote.getTipoMineral());
+
+        // Información del ingenio (destino)
+        dto.setIngenioId(ingenio.getId());
+        dto.setIngenioNombre(ingenio.getRazonSocial());
+        dto.setIngenioNIT(ingenio.getNit());
+        dto.setIngenioContacto(ingenio.getCorreoContacto());
+        dto.setIngenioDireccion(ingenio.getDireccion());
+        dto.setIngenioDepartamento(ingenio.getDepartamento());
+        dto.setIngenioMunicipio(ingenio.getMunicipio());
+        dto.setIngenioTelefono(ingenio.getNumeroTelefonoMovil());
+
+        // Coordenadas del almacén e ingenio
+        if (!ingenio.getAlmacenesIngenioList().isEmpty()) {
+            dto.setIngenioAlmacenLatitud(ingenio.getAlmacenesIngenioList().getFirst().getLatitud());
+            dto.setIngenioAlmacenLongitud(ingenio.getAlmacenesIngenioList().getFirst().getLongitud());
+        }
+        if (!ingenio.getBalanzasIngenioList().isEmpty()) {
+            dto.setIngenioBalanzaLatitud(ingenio.getBalanzasIngenioList().getFirst().getLatitud());
+            dto.setIngenioBalanzaLongitud(ingenio.getBalanzasIngenioList().getFirst().getLongitud());
+        }
+
+        // Información de transporte
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        dto.setCamioneAsignados(asignaciones.size());
+
+        List<AsignacionCamionSimpleDto> asignacionesDto = asignaciones.stream()
+                .map(a -> {
+                    Persona personaTransportista = personaRepository.findByUsuariosId(a.getTransportistaId().getUsuariosId()).orElse(null);
+                    String nombreTransportista = personaTransportista != null
+                            ? personaTransportista.getNombres() + " " + personaTransportista.getPrimerApellido()
+                            : "Transportista #" + a.getTransportistaId().getId();
+                    String telefonoTransportista = personaTransportista != null
+                            ? personaTransportista.getNumeroCelular()
+                            : null;
+
+                    return new AsignacionCamionSimpleDto(
+                            a.getId(),
+                            a.getNumeroCamion(),
+                            a.getEstado(),
+                            a.getFechaAsignacion(),
+                            a.getTransportistaId().getId(),
+                            nombreTransportista,
+                            a.getTransportistaId().getPlacaVehiculo(),
+                            telefonoTransportista
+                    );
+                })
+                .collect(Collectors.toList());
+        dto.setAsignaciones(asignacionesDto);
+
+        // Historial de cambios
+        List<AuditoriaLotes> auditorias = auditoriaLotesRepository.findByLoteIdOrderByFechaRegistroDesc(lote);
+        List<AuditoriaLoteDto> auditoriasDto = auditorias.stream()
+                .map(a -> new AuditoriaLoteDto(
+                        a.getId(),
+                        a.getEstadoAnterior(),
+                        a.getEstadoNuevo(),
+                        a.getAccion(),
+                        a.getDescripcion(),
+                        a.getObservaciones(),
+                        a.getFechaRegistro(),
+                        a.getTipoUsuario()
+                ))
+                .collect(Collectors.toList());
+        dto.setHistorialCambios(auditoriasDto);
+
+        // Metadata
+        dto.setCreatedAt(lote.getFechaCreacion());
+        dto.setUpdatedAt(lote.getUpdatedAt());
 
         return dto;
     }

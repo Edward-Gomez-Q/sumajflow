@@ -2,17 +2,16 @@ package ucb.edu.bo.sumajflow.controller.comercializadora;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.comercializadora.LotesComercializadoraBl;
-import ucb.edu.bo.sumajflow.dto.comercializadora.LotePendienteComercializadoraDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteAprobacionDestinoDto;
-import ucb.edu.bo.sumajflow.dto.ingenio.LoteRechazoDestinoDto;
+import ucb.edu.bo.sumajflow.dto.comercializadora.*;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -25,19 +24,39 @@ public class LotesComercializadoraController {
     private final JwtUtil jwtUtil;
 
     /**
-     * Obtener lotes pendientes de aprobación por la comercializadora
-     * GET /comercializadora/lotes/pendientes
+     * Obtener lotes con paginación y filtros
+     * GET /comercializadora/lotes
      */
-    @GetMapping("/pendientes")
-    public ResponseEntity<Map<String, Object>> getLotesPendientes(
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> getLotes(
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) String tipoMineral,
+            @RequestParam(required = false) String cooperativaNombre,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaDesde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaHasta,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "fechaCreacion") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir,
             @RequestHeader("Authorization") String token
     ) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            List<LotePendienteComercializadoraDto> lotes =
-                    lotesComercializadoraBl.getLotesPendientesComercializadora(usuarioId);
+
+            LoteFiltrosComercializadoraDto filtros = new LoteFiltrosComercializadoraDto();
+            filtros.setEstado(estado);
+            filtros.setTipoMineral(tipoMineral);
+            filtros.setCooperativaNombre(cooperativaNombre);
+            filtros.setFechaDesde(fechaDesde);
+            filtros.setFechaHasta(fechaHasta);
+            filtros.setPage(page);
+            filtros.setSize(size);
+            filtros.setSortBy(sortBy);
+            filtros.setSortDir(sortDir);
+
+            LotesComercializadoraPaginadosDto lotes = lotesComercializadoraBl.getLotesComercializadoraPaginados(usuarioId, filtros);
 
             response.put("success", true);
             response.put("data", lotes);
@@ -69,7 +88,7 @@ public class LotesComercializadoraController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            LotePendienteComercializadoraDto lote = lotesComercializadoraBl.getDetalleLote(id, usuarioId);
+            LoteDetalleComercializadoraDto lote = lotesComercializadoraBl.getLoteDetalleCompleto(id, usuarioId);
 
             response.put("success", true);
             response.put("data", lote);
@@ -91,11 +110,6 @@ public class LotesComercializadoraController {
     /**
      * Aprobar lote desde la comercializadora
      * PUT /comercializadora/lotes/{id}/aprobar
-     *
-     * Body ejemplo:
-     * {
-     *   "observaciones": "Aprobado para recepción"
-     * }
      */
     @PutMapping("/{id}/aprobar")
     public ResponseEntity<Map<String, Object>> aprobarLote(
@@ -114,7 +128,7 @@ public class LotesComercializadoraController {
             String metodoHttp = request.getMethod();
             String endpoint = request.getRequestURI();
 
-            LotePendienteComercializadoraDto lote = lotesComercializadoraBl.aprobarLote(
+            LoteDetalleComercializadoraDto lote = lotesComercializadoraBl.aprobarLote(
                     id,
                     aprobacionDto,
                     usuarioId,
@@ -144,11 +158,6 @@ public class LotesComercializadoraController {
     /**
      * Rechazar lote desde la comercializadora
      * PUT /comercializadora/lotes/{id}/rechazar
-     *
-     * Body ejemplo:
-     * {
-     *   "motivoRechazo": "No estamos comprando este tipo de mineral actualmente"
-     * }
      */
     @PutMapping("/{id}/rechazar")
     public ResponseEntity<Map<String, Object>> rechazarLote(

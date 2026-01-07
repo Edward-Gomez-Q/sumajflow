@@ -40,6 +40,7 @@ public class LotesCooperativaBl {
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesBl auditoriaLotesBl;
     private final AuditoriaLotesRepository auditoriaLotesRepository;
+    private final AsignacionCamionRepository asignacionCamionRepo;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_COOPERATIVA = "Pendiente de aprobación cooperativa";
