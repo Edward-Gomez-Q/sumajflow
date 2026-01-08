@@ -148,6 +148,12 @@
 			<version>2.7.0</version>
 		</dependency>
 
+		<!-- Dependencia de MongoDB -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-mongodb</artifactId>
+		</dependency>
+
 
 	 <dependency>
 	  <groupId>org.eclipse.persistence</groupId>

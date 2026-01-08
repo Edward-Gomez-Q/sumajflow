@@ -96,4 +96,14 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
             "WHERE ac.transportistaId.id = :transportistaId " +
             "AND ac.estado NOT IN ('viaje_terminado', 'cancelado')")
     boolean isDisponible(@Param("transportistaId") Integer transportistaId);
+
+
+    /**
+     * Buscar transportista por ID de usuario (usando el ID directamente)
+     */
+    Optional<Transportista> findByUsuariosId_Id(Integer usuarioId);
+
+
+
+
 }

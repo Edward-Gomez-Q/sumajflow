@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.AsignacionCamion;
 import ucb.edu.bo.sumajflow.entity.Lotes;
+import ucb.edu.bo.sumajflow.entity.Transportista;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -58,4 +59,25 @@ public interface AsignacionCamionRepository extends JpaRepository<AsignacionCami
           "WHERE p.asignacionCamionId IN " +
           "(SELECT a FROM AsignacionCamion a WHERE a.lotesId = :lote)")
   BigDecimal calcularPesoTotalReal(@Param("lote") Lotes lote);
+
+  /**
+   * Buscar asignaciones de un transportista excluyendo ciertos estados
+   */
+  @Query("SELECT a FROM AsignacionCamion a WHERE a.transportistaId = :transportista AND a.estado NOT IN :estados ORDER BY a.fechaAsignacion DESC")
+  List<AsignacionCamion> findByTransportistaIdAndEstadoNotIn(
+          @Param("transportista") Transportista transportista,
+          @Param("estados") List<String> estados
+  );
+
+  /**
+   * Buscar asignaciones de un transportista con un estado específico
+   */
+  List<AsignacionCamion> findByTransportistaIdAndEstado(Transportista transportista, String estado);
+
+  /**
+   * Buscar todas las asignaciones de un transportista
+   */
+  List<AsignacionCamion> findByTransportistaId(Transportista transportista);
+
+
 }
