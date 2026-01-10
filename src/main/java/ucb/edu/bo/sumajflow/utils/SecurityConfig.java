@@ -145,12 +145,16 @@ public class SecurityConfig {
                         .requestMatchers("/transportista/**")
                         .hasRole("TRANSPORTISTA")
 
-                        // Administrador (acceso a todo)
+                        // Administrador
                         .requestMatchers("/admin/**")
                         .hasRole("ADMINISTRADOR")
 
                         // WebSocket endpoint
                         .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/ws-native/**").permitAll()
+                        .requestMatchers("/ws/info").permitAll()
+                        .requestMatchers("/ws/websocket").permitAll()
+                        .requestMatchers("/ws/info/**").permitAll()
 
                         // =============== RESTO DE ENDPOINTS ===============
                         // Cualquier otra petición requiere autenticación

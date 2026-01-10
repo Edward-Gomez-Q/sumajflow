@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -20,6 +21,7 @@ public class LoteAsignadoResumenDto {
     private String tipoMineral;
     private String estado;
     private Integer numeroCamion;
-    private java.time.LocalDateTime fechaAsignacion;
+    private LocalDateTime fechaAsignacion;
+    private String destinoNombre;
     private List<String> mineralTags;
 }

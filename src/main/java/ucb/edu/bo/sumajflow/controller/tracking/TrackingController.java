@@ -1,6 +1,5 @@
 package ucb.edu.bo.sumajflow.controller.tracking;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +11,6 @@ import ucb.edu.bo.sumajflow.dto.tracking.*;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -356,60 +354,5 @@ public class TrackingController {
             response.put("message", "Error interno del servidor: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);
         }
-    }
-
-    // ==================== SIMULACIÓN (DESARROLLO) ====================
-
-    /**
-     * Simula una ubicación (solo para desarrollo/testing)
-     * POST /tracking/simular
-     */
-    @PostMapping("/simular")
-    public ResponseEntity<Map<String, Object>> simularUbicacion(
-            @Valid @RequestBody SimularUbicacionDto dto,
-            @RequestHeader("Authorization") String token) {
-
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            log.info("SIMULACIÓN - Ubicación para asignación ID: {}, Lat: {}, Lng: {}",
-                    dto.getAsignacionCamionId(), dto.getLat(), dto.getLng());
-
-            // Convertir a DTO de actualización normal
-            ActualizarUbicacionDto actualizarDto = ActualizarUbicacionDto.builder()
-                    .asignacionCamionId(dto.getAsignacionCamionId())
-                    .lat(dto.getLat())
-                    .lng(dto.getLng())
-                    .velocidad(dto.getVelocidad() != null ? dto.getVelocidad() : 0.0)
-                    .rumbo(dto.getRumbo())
-                    .precision(5.0) // Precisión simulada
-                    .esOffline(false)
-                    .build();
-
-            ActualizacionUbicacionResponseDto resultado = trackingBl.actualizarUbicacion(actualizarDto);
-
-            response.put("success", true);
-            response.put("message", "Ubicación simulada correctamente");
-            response.put("data", resultado);
-
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            log.error("Error al simular ubicación", e);
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    // Método auxiliar para extraer usuario del token
-    private Integer extractUsuarioId(String token) {
-        String cleanToken = token.replace("Bearer ", "");
-        return jwtUtil.extractUsuarioId(cleanToken);
     }
 }
