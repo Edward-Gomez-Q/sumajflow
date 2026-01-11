@@ -610,6 +610,8 @@ public class LotesCooperativaBl {
                     .build();
 
             asignaciones.add(asignacionCamionRepository.save(asignacion));
+            transportista.setEstado("en_ruta");
+            transportistaRepository.save(transportista);
         }
 
         return asignaciones;

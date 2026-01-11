@@ -423,6 +423,11 @@ public class TransporteBl {
         asignacion.setFechaFin(LocalDateTime.now());
         asignacionCamionRepository.save(asignacion);
 
+        //Cambiar estado de transportista a disponible
+        Transportista transportista = asignacion.getTransportistaId();
+        transportista.setEstado("aprobado");
+        transportistaRepository.save(transportista);
+
         actualizarEstadoLote(asignacion.getLotesId());
 
         log.info("Viaje completado - Asignación: {}", dto.getAsignacionCamionId());
@@ -434,6 +439,79 @@ public class TransporteBl {
                 .estadoNuevo("Completado")
                 .proximoPaso("Viaje finalizado")
                 .build();
+    }
+    /**
+     * Actualiza el estado del lote basándose en el progreso de TODOS los camiones asignados.
+     * El lote solo avanza de estado cuando TODOS los camiones han alcanzado ese estado.
+     */
+    private void sincronizarEstadoLoteConCamiones(Lotes lote) {
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+
+        // Filtrar solo camiones activos (excluir cancelados)
+        List<AsignacionCamion> asignacionesActivas = asignaciones.stream()
+                .filter(a -> !a.getEstado().equals("Cancelado por rechazo"))
+                .toList();
+
+        if (asignacionesActivas.isEmpty()) {
+            return;
+        }
+
+        // Definir la jerarquía de estados de camiones y su correspondencia con estados de lote
+        Map<String, String> estadoCamionAEstadoLote = Map.of(
+                "Esperando iniciar", "Aprobado - Pendiente de iniciar",
+                "En camino a la mina", "En Transporte",
+                "Esperando carguío", "En Transporte",
+                "En camino balanza cooperativa", "En Transporte",
+                "En camino balanza destino", "En Transporte",
+                "En camino almacén destino", "En Transporte",
+                "Descargando", "En Transporte",
+                "Completado", "En Transporte Completo"
+        );
+
+        // Orden jerárquico de estados (menor = más atrasado)
+        List<String> ordenEstados = List.of(
+                "Esperando iniciar",
+                "En camino a la mina",
+                "Esperando carguío",
+                "En camino balanza cooperativa",
+                "En camino balanza destino",
+                "En camino almacén destino",
+                "Descargando",
+                "Completado"
+        );
+
+        // Encontrar el estado más atrasado entre todos los camiones
+        String estadoMasAtrasado = asignacionesActivas.stream()
+                .map(AsignacionCamion::getEstado)
+                .min(Comparator.comparingInt(estado -> {
+                    int index = ordenEstados.indexOf(estado);
+                    return index == -1 ? Integer.MAX_VALUE : index;
+                }))
+                .orElse("Esperando iniciar");
+
+        // Determinar el nuevo estado del lote
+        String nuevoEstadoLote = estadoCamionAEstadoLote.getOrDefault(
+                estadoMasAtrasado,
+                lote.getEstado()
+        );
+
+        // Solo actualizar si el estado cambió
+        if (!nuevoEstadoLote.equals(lote.getEstado())) {
+            String estadoAnterior = lote.getEstado();
+            lote.setEstado(nuevoEstadoLote);
+
+            // Actualizar fechas según el nuevo estado
+            if ("En Transporte".equals(nuevoEstadoLote) && lote.getFechaInicioTransporte() == null) {
+                lote.setFechaInicioTransporte(LocalDateTime.now());
+            } else if ("En Transporte Completo".equals(nuevoEstadoLote)) {
+                lote.setFechaFinTransporte(LocalDateTime.now());
+            }
+
+            lotesRepository.save(lote);
+
+            log.info("Estado del lote {} actualizado: {} -> {} (basado en estado más atrasado: {})",
+                    lote.getId(), estadoAnterior, nuevoEstadoLote, estadoMasAtrasado);
+        }
     }
 
     private AsignacionCamion obtenerYValidarAsignacion(Integer asignacionId, Integer usuarioId) {
@@ -476,26 +554,8 @@ public class TransporteBl {
     }
 
     private void actualizarEstadoLote(Lotes lote) {
-        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
-
-        boolean algunoEnRuta = asignaciones.stream()
-                .anyMatch(a -> !a.getEstado().equals("Esperando iniciar") &&
-                        !a.getEstado().equals("Completado"));
-
-        boolean todosCompletados = asignaciones.stream()
-                .allMatch(a -> a.getEstado().equals("Completado"));
-
-        if (todosCompletados && !"Completado".equals(lote.getEstado())) {
-            lote.setEstado("En Transporte Completo");
-            lote.setFechaFinTransporte(LocalDateTime.now());
-            lotesRepository.save(lote);
-        } else if (algunoEnRuta && "Aprobado - Pendiente de iniciar".equals(lote.getEstado())) {
-            lote.setEstado("En Transporte");
-            lote.setFechaInicioTransporte(LocalDateTime.now());
-            lotesRepository.save(lote);
-        }
+        sincronizarEstadoLoteConCamiones(lote);
     }
-
     private TransicionEstadoResponseDto construirRespuestaTransicion(
             AsignacionCamion asignacion,
             String estadoAnterior,

@@ -37,6 +37,7 @@ public class LotesComercializadoraBl {
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesBl auditoriaLotesBl;
+    private final TransportistaRepository transportistaRepository;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
@@ -244,6 +245,12 @@ public class LotesComercializadoraBl {
             // Cambiar estado a "Cancelado por rechazo"
             asignacion.setEstado("Cancelado por rechazo");
             asignacionCamionRepository.save(asignacion);
+
+            // Poner el estado  de los transportes a "aprobado" para que puedan ser reasignados
+            Transportista transporte = asignacion.getTransportistaId();
+            transporte.setEstado("aprobado");
+            transportistaRepository.save(transporte);
+
 
             log.debug("Camión #{} actualizado de '{}' a 'Cancelado por rechazo'",
                     asignacion.getNumeroCamion(), estadoAnterior);
