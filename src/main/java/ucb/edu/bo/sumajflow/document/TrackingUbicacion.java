@@ -69,6 +69,11 @@ public class TrackingUbicacion {
     @Builder.Default
     private List<PuntoUbicacion> ubicacionesPendientesSincronizar = new ArrayList<>();
 
+    // ==================== NUEVO: Eventos de estado ====================
+    @Builder.Default
+    private List<EventoEstado> eventosEstado = new ArrayList<>();
+    // ==================================================================
+
     // Timestamps
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -112,6 +117,10 @@ public class TrackingUbicacion {
         private Double rumbo;
         private Double altitud;
         private Boolean sincronizado;  // Para tracking offline
+
+        // ==================== NUEVO ====================
+        private Boolean esOffline;     // true si se capturó sin conexión
+        // ===============================================
     }
 
     /**
@@ -155,6 +164,25 @@ public class TrackingUbicacion {
         private LocalDateTime inicioViaje;
         private LocalDateTime finViaje;
     }
+
+    // ==================== NUEVO: Evento de cambio de estado ====================
+    /**
+     * Evento de cambio de estado del viaje
+     * Registra cada transición de estado con timestamp, ubicación y tipo
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class EventoEstado {
+        private LocalDateTime timestamp;
+        private String estadoAnterior;
+        private String estadoNuevo;
+        private Double lat;
+        private Double lng;
+        private String tipoEvento;  // INICIO_VIAJE, LLEGADA_MINA, FIN_CARGUIO, etc.
+    }
+    // ===========================================================================
 
     /**
      * Clase auxiliar para formato GeoJSON

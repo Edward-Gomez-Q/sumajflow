@@ -113,6 +113,32 @@ public class TrackingBl {
                             .orElseThrow(() -> new IllegalStateException("Error al crear tracking"));
                 });
 
+        // Detectar si es offline basado en el DTO o en el gap temporal
+        boolean esOffline = dto.getEsOffline() != null ? dto.getEsOffline() : false;
+
+        // Si no viene marcado como offline, detectar por gap temporal
+        if (!esOffline && tracking.getUbicacionActual() != null
+                && tracking.getUbicacionActual().getTimestamp() != null) {
+
+            LocalDateTime ahora = dto.getTimestampCaptura() != null
+                    ? dto.getTimestampCaptura()
+                    : LocalDateTime.now();
+
+            long minutosDesdeUltima = ChronoUnit.MINUTES.between(
+                    tracking.getUbicacionActual().getTimestamp(),
+                    ahora
+            );
+
+            // Si pasaron más de 5 minutos, considerar como offline
+            if (minutosDesdeUltima > OFFLINE_THRESHOLD_MINUTES) {
+                esOffline = true;
+                log.warn("⚠️ Detectado gap temporal de {} minutos, marcando como offline",
+                        minutosDesdeUltima);
+            }
+        }
+        // =======================================================================
+
+        // Guardar ubicación anterior en historial
         if (tracking.getUbicacionActual() != null) {
             TrackingUbicacion.PuntoUbicacion puntoHistorial = TrackingUbicacion.PuntoUbicacion.builder()
                     .lat(tracking.getUbicacionActual().getLat())
@@ -123,6 +149,7 @@ public class TrackingBl {
                     .rumbo(tracking.getUbicacionActual().getRumbo())
                     .altitud(tracking.getUbicacionActual().getAltitud())
                     .sincronizado(true)
+                    .esOffline(esOffline)
                     .build();
 
             tracking.getHistorialUbicaciones().add(puntoHistorial);
@@ -169,13 +196,12 @@ public class TrackingBl {
                 .accionRequerida(determinarAccionRequerida(geofencingStatus))
                 .build();
     }
-
     @Transactional
     public SincronizacionResponseDto sincronizarUbicacionesOffline(
             Integer asignacionCamionId,
             List<UbicacionOfflineDto> ubicaciones) {
 
-        log.info("Sincronizando {} ubicaciones offline para asignación ID: {}",
+        log.info("🔄 Sincronizando {} ubicaciones offline para asignación ID: {}",
                 ubicaciones.size(), asignacionCamionId);
 
         TrackingUbicacion tracking = trackingRepository.findByAsignacionCamionId(asignacionCamionId)
@@ -185,8 +211,10 @@ public class TrackingBl {
         int fallidas = 0;
         List<String> errores = new ArrayList<>();
 
+        // Ordenar por timestamp
         ubicaciones.sort(Comparator.comparing(UbicacionOfflineDto::getTimestamp));
 
+        log.debug("📝 Agregando {} ubicaciones a pendientes de sincronizar", ubicaciones.size());
         for (UbicacionOfflineDto ubicacion : ubicaciones) {
             try {
                 if (!GeometryUtils.esUbicacionValida(ubicacion.getLat(), ubicacion.getLng())) {
@@ -203,11 +231,12 @@ public class TrackingBl {
                         .velocidad(ubicacion.getVelocidad())
                         .rumbo(ubicacion.getRumbo())
                         .altitud(ubicacion.getAltitud())
-                        .sincronizado(true)
+                        .sincronizado(false)
+                        .esOffline(true)
                         .build();
 
-                tracking.getHistorialUbicaciones().add(punto);
-                sincronizadas++;
+                // Agregar a pendientes primero
+                tracking.getUbicacionesPendientesSincronizar().add(punto);
 
             } catch (Exception e) {
                 errores.add("Error en ubicación " + ubicacion.getTimestamp() + ": " + e.getMessage());
@@ -215,6 +244,21 @@ public class TrackingBl {
             }
         }
 
+        log.debug("📦 Moviendo {} puntos de pendientes a historial",
+                tracking.getUbicacionesPendientesSincronizar().size());
+
+        for (TrackingUbicacion.PuntoUbicacion punto : tracking.getUbicacionesPendientesSincronizar()) {
+            punto.setSincronizado(true);
+            tracking.getHistorialUbicaciones().add(punto);
+            sincronizadas++;
+        }
+
+        // Limpiar pendientes
+        tracking.getUbicacionesPendientesSincronizar().clear();
+        log.debug("✅ Pendientes limpiados, {} ubicaciones ahora en historial", sincronizadas);
+        // ================================================================================
+
+        // Actualizar ubicación actual con la última
         if (!ubicaciones.isEmpty()) {
             UbicacionOfflineDto ultima = ubicaciones.getLast();
             tracking.setUbicacionActual(TrackingUbicacion.UbicacionActual.builder()
@@ -234,11 +278,10 @@ public class TrackingBl {
         tracking.setEstadoConexion("online");
         tracking.setUltimaSincronizacion(LocalDateTime.now());
         tracking.setUpdatedAt(LocalDateTime.now());
-        tracking.getUbicacionesPendientesSincronizar().clear();
 
         trackingRepository.save(tracking);
 
-        log.info("Sincronización completada - Éxito: {}, Fallidas: {}", sincronizadas, fallidas);
+        log.info("✅ Sincronización completada - Éxito: {}, Fallidas: {}", sincronizadas, fallidas);
 
         return SincronizacionResponseDto.builder()
                 .success(fallidas == 0)
@@ -248,7 +291,6 @@ public class TrackingBl {
                 .ultimaSincronizacion(LocalDateTime.now())
                 .build();
     }
-
     public GeofencingStatusDto verificarGeofencing(TrackingUbicacion tracking, double lat, double lng) {
         GeofencingStatusDto.GeofencingStatusDtoBuilder builder = GeofencingStatusDto.builder()
                 .dentroDeZona(false)
@@ -769,5 +811,60 @@ public class TrackingBl {
                 .duracionTotal(tracking.getMetricas().getTiempoEnMovimiento() + tracking.getMetricas().getTiempoDetenido())
                 .puntosVisitados(puntosVisitados)
                 .build();
+    }
+    /**
+     * Actualiza el estado del viaje en MongoDB y registra el evento de cambio de estado.
+     * @param asignacionCamionId ID de la asignación
+     * @param estadoAnterior Estado previo del viaje
+     * @param estadoNuevo Nuevo estado del viaje
+     * @param tipoEvento Tipo de evento (INICIO_VIAJE, LLEGADA_MINA, etc.)
+     * @param lat Latitud donde ocurrió el evento (opcional)
+     * @param lng Longitud donde ocurrió el evento (opcional)
+     */
+    @Transactional
+    public void actualizarEstadoYRegistrarEvento(
+            Integer asignacionCamionId,
+            String estadoAnterior,
+            String estadoNuevo,
+            String tipoEvento,
+            Double lat,
+            Double lng) {
+
+        log.info("📊 Actualizando estado MongoDB - Asignación: {}, {} -> {}, Evento: {}",
+                asignacionCamionId, estadoAnterior, estadoNuevo, tipoEvento);
+
+        try {
+            TrackingUbicacion tracking = trackingRepository
+                    .findByAsignacionCamionId(asignacionCamionId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Tracking no encontrado para asignación: " + asignacionCamionId));
+
+            // 1. Actualizar estado del viaje
+            tracking.setEstadoViaje(estadoNuevo);
+
+            // 2. Crear y agregar evento
+            TrackingUbicacion.EventoEstado evento = TrackingUbicacion.EventoEstado.builder()
+                    .timestamp(LocalDateTime.now())
+                    .estadoAnterior(estadoAnterior)
+                    .estadoNuevo(estadoNuevo)
+                    .lat(lat)
+                    .lng(lng)
+                    .tipoEvento(tipoEvento)
+                    .build();
+
+            tracking.getEventosEstado().add(evento);
+
+            // 3. Actualizar timestamp
+            tracking.setUpdatedAt(LocalDateTime.now());
+
+            // 4. Guardar en MongoDB
+            trackingRepository.save(tracking);
+
+            log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado",
+                    estadoNuevo, tipoEvento);
+
+        } catch (Exception e) {
+            log.error("❌ Error al actualizar estado en MongoDB: {}", e.getMessage(), e);
+        }
     }
 }

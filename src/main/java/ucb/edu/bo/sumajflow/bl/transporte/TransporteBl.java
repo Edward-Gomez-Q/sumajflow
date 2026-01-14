@@ -31,7 +31,6 @@ public class TransporteBl {
     private final AsignacionCamionRepository asignacionCamionRepository;
     private final LotesRepository lotesRepository;
     private final PesajesRepository pesajesRepository;
-    private final PersonaRepository personaRepository;
     private final TransportistaRepository transportistaRepository;
     private final AuditoriaLotesBl auditoriaLotesBl;
     private final NotificacionBl notificacionBl;
@@ -141,6 +140,21 @@ public class TransporteBl {
             asignacionCamionRepository.save(asignacion);
 
             log.info("=== Estado actualizado: {} -> {} ===", estadoAnterior, "En camino a la mina");
+
+            try {
+                trackingBl.actualizarEstadoYRegistrarEvento(
+                        asignacionId,
+                        estadoAnterior,
+                        "En camino a la mina",
+                        "INICIO_VIAJE",
+                        latInicial,
+                        lngInicial
+                );
+                log.info("✅ Estado actualizado en MongoDB");
+            } catch (Exception e) {
+                log.error("⚠️ Error al actualizar MongoDB (no crítico): {}", e.getMessage());
+                // No bloqueamos el flujo si falla MongoDB
+            }
 
             // 8. Operaciones async (no bloquean la respuesta)
             ejecutarOperacionesAsyncInicioViaje(asignacionId, latInicial, lngInicial, asignacion, estadoAnterior, usuarioId);
@@ -617,6 +631,19 @@ public class TransporteBl {
 
         log.info("Llegada a mina confirmada - Distancia: {}m", (int) distancia);
 
+        try {
+            trackingBl.actualizarEstadoYRegistrarEvento(
+                    dto.getAsignacionCamionId(),
+                    estadoAnterior,
+                    "Esperando carguío",
+                    "LLEGADA_MINA",
+                    dto.getLat(),
+                    dto.getLng()
+            );
+        } catch (Exception e) {
+            log.error("⚠️ Error al actualizar MongoDB: {}", e.getMessage());
+        }
+
         return construirRespuestaTransicion(
                 asignacion,
                 estadoAnterior,
@@ -666,6 +693,19 @@ public class TransporteBl {
         actualizarEstadoLote(asignacion.getLotesId());
 
         log.info("Carguío confirmado");
+
+        try {
+            trackingBl.actualizarEstadoYRegistrarEvento(
+                    dto.getAsignacionCamionId(),
+                    estadoAnterior,
+                    "En camino balanza cooperativa",
+                    "FIN_CARGUIO",
+                    dto.getLat(),
+                    dto.getLng()
+            );
+        } catch (Exception e) {
+            log.error("⚠️ Error al actualizar MongoDB: {}", e.getMessage());
+        }
 
         return construirRespuestaTransicion(
                 asignacion,
@@ -739,6 +779,24 @@ public class TransporteBl {
 
         log.info("Pesaje {} registrado - Peso neto: {}kg", tipoPesaje, pesoNeto);
 
+        try {
+            String tipoEventoPesaje = "cooperativa".equals(dto.getTipoPesaje())
+                    ? "PESAJE_COOPERATIVA"
+                    : "PESAJE_DESTINO";
+
+            // Para pesaje no tenemos coordenadas, usamos null
+            trackingBl.actualizarEstadoYRegistrarEvento(
+                    dto.getAsignacionCamionId(),
+                    estadoAnterior,
+                    nuevoEstado,
+                    tipoEventoPesaje,
+                    null,  // No tenemos coordenadas en pesaje
+                    null
+            );
+        } catch (Exception e) {
+            log.error("⚠️ Error al actualizar MongoDB: {}", e.getMessage());
+        }
+
         return construirRespuestaTransicion(
                 asignacion,
                 estadoAnterior,
@@ -801,6 +859,19 @@ public class TransporteBl {
         asignacion.setEstado("Descargando");
         asignacionCamionRepository.save(asignacion);
 
+        try {
+            trackingBl.actualizarEstadoYRegistrarEvento(
+                    asignacionId,
+                    estadoAnterior,
+                    "Descargando",
+                    "INICIO_DESCARGA",
+                    lat,
+                    lng
+            );
+        } catch (Exception e) {
+            log.error("⚠️ Error al actualizar MongoDB: {}", e.getMessage());
+        }
+
         return construirRespuestaTransicion(
                 asignacion,
                 estadoAnterior,
@@ -850,6 +921,19 @@ public class TransporteBl {
         actualizarEstadoLote(asignacion.getLotesId());
 
         log.info("Viaje completado - Asignación: {}", dto.getAsignacionCamionId());
+
+        try {
+            trackingBl.actualizarEstadoYRegistrarEvento(
+                    dto.getAsignacionCamionId(),
+                    estadoAnterior,
+                    "Completado",
+                    "FIN_DESCARGA",
+                    dto.getLat(),
+                    dto.getLng()
+            );
+        } catch (Exception e) {
+            log.error("⚠️ Error al actualizar MongoDB: {}", e.getMessage());
+        }
 
         return TransicionEstadoResponseDto.builder()
                 .success(true)
