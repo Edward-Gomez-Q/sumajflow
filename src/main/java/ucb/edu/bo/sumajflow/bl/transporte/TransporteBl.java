@@ -93,7 +93,10 @@ public class TransporteBl {
         return construirDetalleViaje(asignacion);
     }
 
-    // Inicia el viaje: "Esperando iniciar" -> "En camino a la mina"
+    /**
+     * Inicia el viaje: "Esperando iniciar" -> "En camino a la mina"
+     * Versión simplificada y robusta
+     */
     @Transactional
     public TransicionEstadoResponseDto iniciarViaje(
             Integer asignacionId,
@@ -102,39 +105,455 @@ public class TransporteBl {
             String observaciones,
             Integer usuarioId
     ) {
-        log.info("Iniciando viaje - Asignación: {}", asignacionId);
+        log.info("=== INICIO: iniciarViaje - Asignacion: {}, Usuario: {} ===", asignacionId, usuarioId);
 
+        try {
+            // 1. Validaciones básicas
+            validarCoordenadas(latInicial, lngInicial);
+
+            // 2. Obtener y validar asignación
+            AsignacionCamion asignacion = obtenerYValidarAsignacion(asignacionId, usuarioId);
+            validarEstado(asignacion, "Esperando iniciar");
+
+            // 3. Validar transportista
+            Transportista transportista = asignacion.getTransportistaId();
+            if (!"aprobado".equals(transportista.getEstado())) {
+                throw new IllegalStateException(
+                        "No puedes iniciar el viaje. Estado del transportista: " + transportista.getEstado()
+                );
+            }
+
+            String estadoAnterior = asignacion.getEstado();
+            LocalDateTime ahora = LocalDateTime.now();
+
+            // 4. Actualizar estado de la asignación
+            asignacion.setEstado("En camino a la mina");
+            asignacion.setFechaInicio(ahora);
+
+            // 5. Registrar información del inicio en observaciones
+            registrarInicioEnObservaciones(asignacion, latInicial, lngInicial, observaciones, usuarioId, ahora);
+
+            // 6. Cambiar estado del transportista
+            transportista.setEstado("en_viaje");
+            transportistaRepository.save(transportista);
+
+            // 7. Guardar asignación
+            asignacionCamionRepository.save(asignacion);
+
+            log.info("=== Estado actualizado: {} -> {} ===", estadoAnterior, "En camino a la mina");
+
+            // 8. Operaciones async (no bloquean la respuesta)
+            ejecutarOperacionesAsyncInicioViaje(asignacionId, latInicial, lngInicial, asignacion, estadoAnterior, usuarioId);
+
+            // 9. Construir y retornar respuesta
+            TransicionEstadoResponseDto response = construirRespuestaTransicion(
+                    asignacion,
+                    estadoAnterior,
+                    "En camino a la mina",
+                    "Dirigete a la mina para iniciar la carga del mineral"
+            );
+
+            log.info("=== FIN: iniciarViaje exitoso ===");
+            return response;
+
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            log.error("Error de validacion al iniciar viaje: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error inesperado al iniciar viaje", e);
+            throw new RuntimeException("Error al iniciar el viaje: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Valida que las coordenadas sean correctas
+     */
+    private void validarCoordenadas(Double lat, Double lng) {
+        if (lat == null || lng == null) {
+            throw new IllegalArgumentException("Las coordenadas GPS son obligatorias");
+        }
+        if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            throw new IllegalArgumentException("Coordenadas GPS invalidas");
+        }
+    }
+
+    /**
+     * Registra la información del inicio en las observaciones
+     */
+    private void registrarInicioEnObservaciones(
+            AsignacionCamion asignacion,
+            Double latInicial,
+            Double lngInicial,
+            String observaciones,
+            Integer usuarioId,
+            LocalDateTime ahora
+    ) {
+        try {
+            Map<String, Object> obs = obtenerObservaciones(asignacion);
+            Map<String, Object> inicioViaje = new HashMap<>();
+
+            inicioViaje.put("timestamp", ahora.toString());
+            inicioViaje.put("lat", latInicial);
+            inicioViaje.put("lng", lngInicial);
+            inicioViaje.put("usuario_id", usuarioId);
+            inicioViaje.put("dispositivo", "app_movil");
+
+            if (observaciones != null && !observaciones.trim().isEmpty()) {
+                inicioViaje.put("observaciones", observaciones.trim());
+            }
+
+            obs.put("inicio_viaje", inicioViaje);
+            actualizarObservaciones(asignacion, obs);
+
+        } catch (Exception e) {
+            log.error("Error al registrar observaciones de inicio: {}", e.getMessage());
+            // No lanzamos excepción, solo registramos el error
+        }
+    }
+
+    /**
+     * Ejecuta operaciones asíncronas que no deben bloquear la respuesta
+     */
+    private void ejecutarOperacionesAsyncInicioViaje(
+            Integer asignacionId,
+            Double latInicial,
+            Double lngInicial,
+            AsignacionCamion asignacion,
+            String estadoAnterior,
+            Integer usuarioId
+    ) {
+        // Estas operaciones se ejecutan en segundo plano
+        // Si fallan, no afectan la respuesta principal
+
+        // 1. Iniciar tracking GPS
+        try {
+            trackingBl.iniciarTracking(asignacionId, latInicial, lngInicial);
+            log.info("Tracking GPS iniciado para asignacion: {}", asignacionId);
+        } catch (Exception e) {
+            log.error("Error al iniciar tracking GPS (no critico): {}", e.getMessage());
+        }
+
+        // 2. Actualizar estado del lote
+        try {
+            actualizarEstadoLote(asignacion.getLotesId());
+        } catch (Exception e) {
+            log.error("Error al actualizar estado del lote (no critico): {}", e.getMessage());
+        }
+
+        // 3. Registrar auditoría
+        try {
+            registrarAuditoriaInicioViaje(
+                    asignacion.getLotesId(),
+                    asignacion,
+                    estadoAnterior,
+                    usuarioId
+            );
+        } catch (Exception e) {
+            log.error("Error al registrar auditoria (no critico): {}", e.getMessage());
+        }
+
+        // 4. Enviar notificación
+        try {
+            enviarNotificacionInicioViaje(
+                    asignacion.getLotesId(),
+                    asignacion,
+                    asignacion.getTransportistaId()
+            );
+        } catch (Exception e) {
+            log.error("Error al enviar notificacion (no critico): {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Registra en auditoría el inicio del viaje
+     */
+    private void registrarAuditoriaInicioViaje(
+            Lotes lote,
+            AsignacionCamion asignacion,
+            String estadoAnterior,
+            Integer usuarioId
+    ) {
+        try {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("asignacion_camion_id", asignacion.getId());
+            metadata.put("transportista_id", asignacion.getTransportistaId().getId());
+            metadata.put("numero_camion", asignacion.getNumeroCamion());
+            metadata.put("placa_vehiculo", asignacion.getTransportistaId().getPlacaVehiculo());
+            metadata.put("tipo_accion", "inicio_viaje_operativo");
+            metadata.put("fecha_inicio", asignacion.getFechaInicio().toString());
+
+            // Obtener coordenadas del inicio
+            Map<String, Object> obs = obtenerObservaciones(asignacion);
+            if (obs.containsKey("inicio_viaje")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> inicioViaje = (Map<String, Object>) obs.get("inicio_viaje");
+                Map<String, Object> coords = new HashMap<>();
+                coords.put("lat", inicioViaje.get("lat"));
+                coords.put("lng", inicioViaje.get("lng"));
+                metadata.put("coordenadas_inicio", coords);
+            }
+
+            String descripcion = String.format(
+                    "Transportista inicio el viaje - Camion #%d - Placa: %s",
+                    asignacion.getNumeroCamion(),
+                    asignacion.getTransportistaId().getPlacaVehiculo()
+            );
+
+            auditoriaLotesBl.registrarAuditoria(
+                    lote.getId(),
+                    "transportista",
+                    estadoAnterior,
+                    asignacion.getEstado(),
+                    "INICIAR_VIAJE",
+                    descripcion,
+                    null,
+                    metadata,
+                    null
+            );
+
+            log.info("Auditoria registrada - Lote ID: {}, Accion: INICIAR_VIAJE", lote.getId());
+
+        } catch (Exception e) {
+            log.error("Error al registrar auditoria: {}", e.getMessage(), e);
+            // No relanzamos la excepción
+        }
+    }
+
+    /**
+     * Envía notificación al socio dueño del lote
+     */
+    private void enviarNotificacionInicioViaje(
+            Lotes lote,
+            AsignacionCamion asignacion,
+            Transportista transportista
+    ) {
+        try {
+            // Obtener el socio dueño de la mina del lote
+            Socio socio = lote.getMinasId().getSocioId();
+            Integer socioUsuarioId = socio.getUsuariosId().getId();
+
+            // Obtener datos del transportista
+            Persona personaTransportista = transportista.getUsuariosId().getPersona();
+            String nombreTransportista = personaTransportista.getNombres() + " " +
+                    personaTransportista.getPrimerApellido();
+
+            // Construir metadata de la notificación
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("lote_id", lote.getId());
+            metadata.put("asignacion_camion_id", asignacion.getId());
+            metadata.put("numero_camion", asignacion.getNumeroCamion());
+            metadata.put("transportista_id", transportista.getId());
+            metadata.put("transportista_nombre", nombreTransportista);
+            metadata.put("placa_vehiculo", transportista.getPlacaVehiculo());
+            metadata.put("mina_nombre", lote.getMinasId().getNombre());
+            metadata.put("tipo_notificacion", "inicio_viaje");
+            metadata.put("fecha_inicio", asignacion.getFechaInicio().toString());
+
+            String codigoLote = String.format("LT-%d-%04d",
+                    lote.getFechaCreacion().getYear(),
+                    lote.getId());
+
+            String titulo = String.format("Viaje iniciado - Camion #%d", asignacion.getNumeroCamion());
+            String mensaje = String.format(
+                    "%s ha iniciado el transporte del lote %s desde %s. El camion esta en camino a la mina.",
+                    nombreTransportista,
+                    codigoLote,
+                    lote.getMinasId().getNombre()
+            );
+
+            // Crear y enviar notificación
+            notificacionBl.crearNotificacion(
+                    socioUsuarioId,
+                    "info",
+                    titulo,
+                    mensaje,
+                    metadata
+            );
+
+            log.info("Notificacion enviada - Usuario ID: {}, Lote: {}, Camion: #{}",
+                    socioUsuarioId, codigoLote, asignacion.getNumeroCamion());
+
+        } catch (Exception e) {
+            log.error("Error al enviar notificacion: {}", e.getMessage(), e);
+            // No relanzamos la excepción
+        }
+    }
+
+
+
+    /**
+     * Registra un evento del viaje de forma unificada.
+     * Este método actúa como dispatcher hacia los métodos específicos existentes.
+     *
+     * @param asignacionId ID de la asignación del camión
+     * @param dto          Datos del evento
+     * @param usuarioId    ID del usuario autenticado
+     * @return Respuesta con el nuevo estado
+     */
+    @Transactional
+    public TransicionEstadoResponseDto registrarEvento(
+            Integer asignacionId,
+            RegistrarEventoDto dto,
+            Integer usuarioId
+    ) {
+        log.info("📝 Registrando evento {} - Asignación: {}", dto.getTipoEvento(), asignacionId);
+
+        // Validar coordenadas para eventos que las requieren
+        List<String> eventosConUbicacion = List.of(
+                "INICIO_VIAJE", "LLEGADA_MINA", "FIN_CARGUIO",
+                "INICIO_DESCARGA", "FIN_DESCARGA"
+        );
+
+        if (eventosConUbicacion.contains(dto.getTipoEvento().toUpperCase())) {
+            if (dto.getLat() == null || dto.getLng() == null) {
+                throw new IllegalArgumentException("Las coordenadas GPS son obligatorias para este evento");
+            }
+        }
+
+        String tipoEvento = dto.getTipoEvento().toUpperCase();
+
+        switch (tipoEvento) {
+            case "INICIO_VIAJE":
+                return iniciarViaje(
+                        asignacionId,
+                        dto.getLat(),
+                        dto.getLng(),
+                        dto.getComentario(),
+                        usuarioId
+                );
+
+            case "LLEGADA_MINA":
+                ConfirmarLlegadaMinaDto llegadaDto = new ConfirmarLlegadaMinaDto();
+                llegadaDto.setAsignacionCamionId(asignacionId);
+                llegadaDto.setLat(dto.getLat());
+                llegadaDto.setLng(dto.getLng());
+                llegadaDto.setObservaciones(dto.getComentario());
+                llegadaDto.setFotosUrls(dto.getEvidencias());
+                // Checklist desde metadatos
+                if (dto.getMetadatosExtra() != null) {
+                    llegadaDto.setPalaOperativa((Boolean) dto.getMetadatosExtra().get("palaOperativa"));
+                    llegadaDto.setMineralVisible((Boolean) dto.getMetadatosExtra().get("mineralVisible"));
+                    llegadaDto.setEspacioParaCarga((Boolean) dto.getMetadatosExtra().get("espacioParaCarga"));
+                }
+                return confirmarLlegadaMina(llegadaDto, usuarioId);
+
+            case "INICIO_CARGUIO":
+                // Transición interna: Esperando carguío se mantiene hasta FIN_CARGUIO
+                // Este evento es solo para registro, no cambia estado
+                return registrarEventoInterno(asignacionId, "inicio_carguio", dto, usuarioId);
+
+            case "FIN_CARGUIO":
+            case "CONFIRMAR_CARGUIO":
+                ConfirmarCarguioDto carguioDto = new ConfirmarCarguioDto();
+                carguioDto.setAsignacionCamionId(asignacionId);
+                carguioDto.setLat(dto.getLat());
+                carguioDto.setLng(dto.getLng());
+                carguioDto.setObservaciones(dto.getComentario());
+                carguioDto.setFotosUrls(dto.getEvidencias());
+                if (dto.getMetadatosExtra() != null && dto.getMetadatosExtra().containsKey("pesoEstimadoKg")) {
+                    carguioDto.setPesoEstimadoKg(((Number) dto.getMetadatosExtra().get("pesoEstimadoKg")).doubleValue());
+                }
+                return confirmarCarguio(carguioDto, usuarioId);
+
+            case "PESAJE_BALANZA_COOP":
+                validarDatosPesaje(dto);
+                RegistrarPesajeDto pesajeCoopDto = new RegistrarPesajeDto();
+                pesajeCoopDto.setAsignacionCamionId(asignacionId);
+                pesajeCoopDto.setTipoPesaje("cooperativa");
+                pesajeCoopDto.setPesoBrutoKg(dto.getDatosPesaje().getPesoBruto());
+                pesajeCoopDto.setPesoTaraKg(dto.getDatosPesaje().getPesoTara());
+                pesajeCoopDto.setObservaciones(dto.getComentario());
+                if (dto.getEvidencias() != null && !dto.getEvidencias().isEmpty()) {
+                    pesajeCoopDto.setTicketPesajeUrl(dto.getEvidencias().get(0));
+                }
+                return registrarPesaje(pesajeCoopDto, usuarioId);
+
+            case "PESAJE_BALANZA_DESTINO":
+                validarDatosPesaje(dto);
+                RegistrarPesajeDto pesajeDestinoDto = new RegistrarPesajeDto();
+                pesajeDestinoDto.setAsignacionCamionId(asignacionId);
+                pesajeDestinoDto.setTipoPesaje("destino");
+                pesajeDestinoDto.setPesoBrutoKg(dto.getDatosPesaje().getPesoBruto());
+                pesajeDestinoDto.setPesoTaraKg(dto.getDatosPesaje().getPesoTara());
+                pesajeDestinoDto.setObservaciones(dto.getComentario());
+                if (dto.getEvidencias() != null && !dto.getEvidencias().isEmpty()) {
+                    pesajeDestinoDto.setTicketPesajeUrl(dto.getEvidencias().get(0));
+                }
+                return registrarPesaje(pesajeDestinoDto, usuarioId);
+
+            case "INICIO_DESCARGA":
+                return iniciarDescarga(asignacionId, dto.getLat(), dto.getLng(), usuarioId);
+
+            case "FIN_DESCARGA":
+            case "CONFIRMAR_DESCARGA":
+                ConfirmarDescargaDto descargaDto = new ConfirmarDescargaDto();
+                descargaDto.setAsignacionCamionId(asignacionId);
+                descargaDto.setLat(dto.getLat());
+                descargaDto.setLng(dto.getLng());
+                descargaDto.setObservaciones(dto.getComentario());
+                descargaDto.setFotosUrls(dto.getEvidencias());
+                if (dto.getMetadatosExtra() != null && dto.getMetadatosExtra().containsKey("firmaReceptor")) {
+                    descargaDto.setFirmaReceptor((String) dto.getMetadatosExtra().get("firmaReceptor"));
+                }
+                return confirmarDescarga(descargaDto, usuarioId);
+
+            default:
+                throw new IllegalArgumentException("Tipo de evento no reconocido: " + dto.getTipoEvento());
+        }
+    }
+
+    /**
+     * Valida que los datos de pesaje estén completos
+     */
+    private void validarDatosPesaje(RegistrarEventoDto dto) {
+        if (dto.getDatosPesaje() == null) {
+            throw new IllegalArgumentException("Los datos de pesaje son obligatorios");
+        }
+        if (dto.getDatosPesaje().getPesoBruto() == null || dto.getDatosPesaje().getPesoBruto() <= 0) {
+            throw new IllegalArgumentException("El peso bruto es obligatorio y debe ser mayor a 0");
+        }
+        if (dto.getDatosPesaje().getPesoTara() == null || dto.getDatosPesaje().getPesoTara() <= 0) {
+            throw new IllegalArgumentException("El peso tara es obligatorio y debe ser mayor a 0");
+        }
+        if (dto.getDatosPesaje().getPesoTara() >= dto.getDatosPesaje().getPesoBruto()) {
+            throw new IllegalArgumentException("El peso tara debe ser menor al peso bruto");
+        }
+    }
+
+    /**
+     * Registra un evento interno sin cambio de estado
+     * Útil para eventos intermedios como inicio_carguio
+     */
+    private TransicionEstadoResponseDto registrarEventoInterno(
+            Integer asignacionId,
+            String tipoEvento,
+            RegistrarEventoDto dto,
+            Integer usuarioId
+    ) {
         AsignacionCamion asignacion = obtenerYValidarAsignacion(asignacionId, usuarioId);
 
-        validarEstado(asignacion, "Esperando iniciar");
-
-        String estadoAnterior = asignacion.getEstado();
-        asignacion.setEstado("En camino a la mina");
-        asignacion.setFechaInicio(LocalDateTime.now());
-
+        // Registrar en observaciones
         Map<String, Object> obs = obtenerObservaciones(asignacion);
-        obs.put("inicio_viaje", Map.of(
-                "timestamp", LocalDateTime.now(),
-                "lat", latInicial,
-                "lng", lngInicial,
-                "observaciones", observaciones != null ? observaciones : ""
-        ));
-        actualizarObservaciones(asignacion, obs);
+        Map<String, Object> eventoData = new HashMap<>();
+        eventoData.put("timestamp", LocalDateTime.now());
+        if (dto.getLat() != null) eventoData.put("lat", dto.getLat());
+        if (dto.getLng() != null) eventoData.put("lng", dto.getLng());
+        if (dto.getComentario() != null) eventoData.put("comentario", dto.getComentario());
+        if (dto.getEvidencias() != null) eventoData.put("evidencias", dto.getEvidencias());
 
+        obs.put(tipoEvento, eventoData);
+        actualizarObservaciones(asignacion, obs);
         asignacionCamionRepository.save(asignacion);
 
-        trackingBl.iniciarTracking(asignacionId, latInicial, lngInicial);
+        log.info("✅ Evento interno registrado: {} - Asignación: {}", tipoEvento, asignacionId);
 
-        actualizarEstadoLote(asignacion.getLotesId());
-
-        log.info("Viaje iniciado - Nuevo estado: En camino a la mina");
-
-        return construirRespuestaTransicion(
-                asignacion,
-                estadoAnterior,
-                "En camino a la mina",
-                "Dirígete a la mina para iniciar la carga"
-        );
+        return TransicionEstadoResponseDto.builder()
+                .success(true)
+                .message("Evento registrado correctamente")
+                .estadoAnterior(asignacion.getEstado())
+                .estadoNuevo(asignacion.getEstado()) // No cambia
+                .proximoPaso("Continúa con el proceso actual")
+                .build();
     }
 
     // Confirma llegada a mina: "En camino a la mina" -> "Esperando carguío"
@@ -562,16 +981,35 @@ public class TransporteBl {
             String estadoNuevo,
             String proximoPaso
     ) {
-        ProximoPuntoControlDto proximoPunto = calcularProximoPunto(asignacion);
+        try {
+            // Calcular próximo punto de forma segura
+            ProximoPuntoControlDto proximoPunto = calcularProximoPuntoSeguro(asignacion);
 
-        return TransicionEstadoResponseDto.builder()
-                .success(true)
-                .message("Estado actualizado exitosamente")
-                .estadoAnterior(estadoAnterior)
-                .estadoNuevo(estadoNuevo)
-                .proximoPaso(proximoPaso)
-                .proximoPuntoControl(proximoPunto)
-                .build();
+            // Construir metadata básico y seguro
+            Map<String, Object> metadata = construirMetadataSeguro(asignacion);
+
+            return TransicionEstadoResponseDto.builder()
+                    .success(true)
+                    .message("Estado actualizado exitosamente")
+                    .estadoAnterior(estadoAnterior)
+                    .estadoNuevo(estadoNuevo)
+                    .proximoPaso(proximoPaso)
+                    .proximoPuntoControl(proximoPunto)
+                    .metadata(metadata)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error al construir respuesta de transicion: {}", e.getMessage(), e);
+
+            // Respuesta mínima en caso de error
+            return TransicionEstadoResponseDto.builder()
+                    .success(true)
+                    .message("Estado actualizado exitosamente")
+                    .estadoAnterior(estadoAnterior)
+                    .estadoNuevo(estadoNuevo)
+                    .proximoPaso(proximoPaso)
+                    .build();
+        }
     }
 
     private ProximoPuntoControlDto calcularProximoPunto(AsignacionCamion asignacion) {
@@ -658,6 +1096,141 @@ public class TransporteBl {
         }
 
         return null;
+    }
+    private ProximoPuntoControlDto calcularProximoPuntoSeguro(AsignacionCamion asignacion) {
+        try {
+            Lotes lote = asignacion.getLotesId();
+            String estadoActual = asignacion.getEstado();
+
+            String tipo = null;
+            String nombre = null;
+            Double lat = null;
+            Double lng = null;
+
+            switch (estadoActual) {
+                case "En camino a la mina":
+                    Minas mina = lote.getMinasId();
+                    if (mina != null) {
+                        tipo = "mina";
+                        nombre = mina.getNombre();
+                        lat = mina.getLatitud() != null ? mina.getLatitud().doubleValue() : null;
+                        lng = mina.getLongitud() != null ? mina.getLongitud().doubleValue() : null;
+                    }
+                    break;
+
+                case "En camino balanza cooperativa":
+                    Cooperativa cooperativa = lote.getMinasId().getSectoresId().getCooperativaId();
+                    if (cooperativa != null && !cooperativa.getBalanzaCooperativaList().isEmpty()) {
+                        var balanza = cooperativa.getBalanzaCooperativaList().get(0);
+                        tipo = "balanza_cooperativa";
+                        nombre = "Balanza " + cooperativa.getRazonSocial();
+                        lat = balanza.getLatitud() != null ? balanza.getLatitud().doubleValue() : null;
+                        lng = balanza.getLongitud() != null ? balanza.getLongitud().doubleValue() : null;
+                    }
+                    break;
+
+                case "En camino balanza destino":
+                    if (!lote.getLoteIngenioList().isEmpty()) {
+                        var ingenio = lote.getLoteIngenioList().get(0).getIngenioMineroId();
+                        if (ingenio != null && !ingenio.getBalanzasIngenioList().isEmpty()) {
+                            var balanza = ingenio.getBalanzasIngenioList().get(0);
+                            tipo = "balanza_ingenio";
+                            nombre = "Balanza " + ingenio.getRazonSocial();
+                            lat = balanza.getLatitud() != null ? balanza.getLatitud().doubleValue() : null;
+                            lng = balanza.getLongitud() != null ? balanza.getLongitud().doubleValue() : null;
+                        }
+                    } else if (!lote.getLoteComercializadoraList().isEmpty()) {
+                        var comercializadora = lote.getLoteComercializadoraList().get(0).getComercializadoraId();
+                        if (comercializadora != null && !comercializadora.getBalanzasList().isEmpty()) {
+                            var balanza = comercializadora.getBalanzasList().get(0);
+                            tipo = "balanza_comercializadora";
+                            nombre = "Balanza " + comercializadora.getRazonSocial();
+                            lat = balanza.getLatitud() != null ? balanza.getLatitud().doubleValue() : null;
+                            lng = balanza.getLongitud() != null ? balanza.getLongitud().doubleValue() : null;
+                        }
+                    }
+                    break;
+
+                case "En camino almacen destino":
+                    if (!lote.getLoteIngenioList().isEmpty()) {
+                        var ingenio = lote.getLoteIngenioList().get(0).getIngenioMineroId();
+                        if (ingenio != null && !ingenio.getAlmacenesIngenioList().isEmpty()) {
+                            var almacen = ingenio.getAlmacenesIngenioList().get(0);
+                            tipo = "almacen_ingenio";
+                            nombre = "Almacen " + ingenio.getRazonSocial();
+                            lat = almacen.getLatitud() != null ? almacen.getLatitud().doubleValue() : null;
+                            lng = almacen.getLongitud() != null ? almacen.getLongitud().doubleValue() : null;
+                        }
+                    } else if (!lote.getLoteComercializadoraList().isEmpty()) {
+                        var comercializadora = lote.getLoteComercializadoraList().get(0).getComercializadoraId();
+                        if (comercializadora != null && !comercializadora.getAlmacenesList().isEmpty()) {
+                            var almacen = comercializadora.getAlmacenesList().get(0);
+                            tipo = "almacen_comercializadora";
+                            nombre = "Almacen " + comercializadora.getRazonSocial();
+                            lat = almacen.getLatitud() != null ? almacen.getLatitud().doubleValue() : null;
+                            lng = almacen.getLongitud() != null ? almacen.getLongitud().doubleValue() : null;
+                        }
+                    }
+                    break;
+            }
+
+            // Solo retornar si tenemos datos válidos
+            if (tipo != null && nombre != null && lat != null && lng != null) {
+                return ProximoPuntoControlDto.builder()
+                        .tipo(tipo)
+                        .nombre(nombre)
+                        .latitud(lat)
+                        .longitud(lng)
+                        .build();
+            }
+
+            return null;
+
+        } catch (Exception e) {
+            log.error("Error al calcular proximo punto: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Construye metadata seguro sin objetos complejos
+     */
+    private Map<String, Object> construirMetadataSeguro(AsignacionCamion asignacion) {
+        Map<String, Object> metadata = new HashMap<>();
+
+        try {
+            metadata.put("asignacion_id", asignacion.getId());
+            metadata.put("numero_camion", asignacion.getNumeroCamion());
+            metadata.put("estado_actual", asignacion.getEstado());
+
+            if (asignacion.getFechaInicio() != null) {
+                metadata.put("fecha_inicio", asignacion.getFechaInicio().toString());
+            }
+
+            // Información del lote (simple)
+            Lotes lote = asignacion.getLotesId();
+            if (lote != null) {
+                metadata.put("lote_id", lote.getId());
+                metadata.put("codigo_lote", String.format("LT-%d-%04d",
+                        lote.getFechaCreacion().getYear(),
+                        lote.getId()));
+                metadata.put("tipo_operacion", lote.getTipoOperacion());
+            }
+
+            // Información del transportista (simple)
+            Transportista transportista = asignacion.getTransportistaId();
+            if (transportista != null) {
+                metadata.put("transportista_id", transportista.getId());
+                metadata.put("placa_vehiculo", transportista.getPlacaVehiculo());
+            }
+
+        } catch (Exception e) {
+            log.error("Error al construir metadata: {}", e.getMessage());
+            // Retornar metadata vacío en caso de error
+            return new HashMap<>();
+        }
+
+        return metadata;
     }
 
     private LoteAsignadoResumenDto convertToLoteResumen(AsignacionCamion asignacion) {
