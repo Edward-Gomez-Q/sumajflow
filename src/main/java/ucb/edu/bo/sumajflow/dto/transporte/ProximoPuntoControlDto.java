@@ -3,8 +3,9 @@ package ucb.edu.bo.sumajflow.dto.transporte;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import lombok.NoArgsConstructor; /**
+ * DTO para información del próximo punto de control
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -14,6 +15,5 @@ public class ProximoPuntoControlDto {
     private String nombre;
     private Double latitud;
     private Double longitud;
-    private Double distanciaMetros;
-    private String tiempoEstimado;
+    private String descripcion;
 }

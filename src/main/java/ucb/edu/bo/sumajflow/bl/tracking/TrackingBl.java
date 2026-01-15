@@ -29,10 +29,10 @@ public class TrackingBl {
     private static final long OFFLINE_THRESHOLD_MINUTES = 5;
 
     // Radios de geofencing en metros
-    private static final int RADIO_MINA = 100;
-    private static final int RADIO_BALANZA_COOPERATIVA = 50;
-    private static final int RADIO_BALANZA_DESTINO = 50;
-    private static final int RADIO_ALMACEN = 100;
+    private static final int RADIO_MINA = 1000;
+    private static final int RADIO_BALANZA_COOPERATIVA = 1000;
+    private static final int RADIO_BALANZA_DESTINO = 1000;
+    private static final int RADIO_ALMACEN = 1000;
 
     @Transactional
     public TrackingResponseDto iniciarTracking(Integer asignacionCamionId, Double latInicial, Double lngInicial) {

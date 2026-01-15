@@ -7,11 +7,11 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 /**
- * DTO para confirmar descarga
+ * DTO para iniciar viaje
  */
-
 @EqualsAndHashCode(callSuper = true)
 @Data
 @NoArgsConstructor
-public class ConfirmarDescargaDto extends EventoUbicacionBaseDto {
+public class IniciarViajeDto extends EventoUbicacionBaseDto {
+    // Hereda lat, lng, observaciones
 }
