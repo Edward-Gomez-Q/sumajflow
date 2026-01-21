@@ -25,6 +25,7 @@ public class TrackingBl {
     private final AsignacionCamionRepository asignacionCamionRepository;
     private final LotesRepository lotesRepository;
     private final PersonaRepository personaRepository;
+    private final TrackingWebSocketService trackingWebSocketService;
 
     private static final long OFFLINE_THRESHOLD_MINUTES = 5;
 
@@ -181,6 +182,14 @@ public class TrackingBl {
 
         trackingRepository.save(tracking);
 
+        // Convertir a DTO y enviar por WebSocket
+        TrackingResponseDto responseDto = convertToResponseDto(tracking);
+        trackingWebSocketService.enviarActualizacionCompleta(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                responseDto
+        );
+
         return ActualizacionUbicacionResponseDto.builder()
                 .success(true)
                 .mensaje("Ubicación actualizada correctamente")
@@ -280,6 +289,15 @@ public class TrackingBl {
         tracking.setUpdatedAt(LocalDateTime.now());
 
         trackingRepository.save(tracking);
+        // Enviar actualización por WebSocket
+        TrackingResponseDto responseDto = convertToResponseDto(tracking);
+        trackingWebSocketService.enviarActualizacionCompleta(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                responseDto
+        );
+
+        log.info("📡 Sincronización enviada por WebSocket");
 
         log.info("✅ Sincronización completada - Éxito: {}, Fallidas: {}", sincronizadas, fallidas);
 
@@ -362,6 +380,21 @@ public class TrackingBl {
         tracking.setUpdatedAt(LocalDateTime.now());
         trackingRepository.save(tracking);
 
+        // Enviar actualización y evento por WebSocket
+        TrackingResponseDto responseDto = convertToResponseDto(tracking);
+        trackingWebSocketService.enviarActualizacionCompleta(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                responseDto
+        );
+
+        trackingWebSocketService.enviarEventoTracking(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                "LLEGADA_PUNTO_CONTROL",
+                "Llegada confirmada a: " + punto.getNombre()
+        );
+
         log.info("Llegada registrada exitosamente a: {}", tipoPunto);
 
         return convertToResponseDto(tracking);
@@ -392,6 +425,20 @@ public class TrackingBl {
 
         tracking.setUpdatedAt(LocalDateTime.now());
         trackingRepository.save(tracking);
+        // Enviar actualización y evento por WebSocket
+        TrackingResponseDto responseDto = convertToResponseDto(tracking);
+        trackingWebSocketService.enviarActualizacionCompleta(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                responseDto
+        );
+
+        trackingWebSocketService.enviarEventoTracking(
+                tracking.getLoteId(),
+                tracking.getAsignacionCamionId(),
+                "SALIDA_PUNTO_CONTROL",
+                "Salida confirmada de: " + punto.getNombre()
+        );
 
         log.info("Salida registrada exitosamente de: {}", tipoPunto);
 
@@ -859,6 +906,23 @@ public class TrackingBl {
 
             // 4. Guardar en MongoDB
             trackingRepository.save(tracking);
+
+            // Enviar actualización por WebSocket
+            TrackingResponseDto responseDto = convertToResponseDto(tracking);
+            trackingWebSocketService.enviarActualizacionCompleta(
+                    tracking.getLoteId(),
+                    tracking.getAsignacionCamionId(),
+                    responseDto
+            );
+
+            trackingWebSocketService.enviarEventoTracking(
+                    tracking.getLoteId(),
+                    tracking.getAsignacionCamionId(),
+                    tipoEvento,
+                    String.format("Cambio de estado: %s → %s", estadoAnterior, estadoNuevo)
+            );
+
+            log.info("📡 Actualización de estado enviada por WebSocket");
 
             log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado",
                     estadoNuevo, tipoEvento);

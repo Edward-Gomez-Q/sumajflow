@@ -139,14 +139,20 @@ public class NotificacionBl {
      */
     private void enviarNotificacionWebSocket(Integer usuarioId, NotificacionDto dto) {
         try {
+            String destination = "/queue/notificaciones";
+            String userIdStr = usuarioId.toString();
+
+            log.info("📤 Enviando notificación WebSocket - Usuario: {}, Destino: {}", userIdStr, destination);
+
             messagingTemplate.convertAndSendToUser(
-                    usuarioId.toString(),
-                    "/queue/notificaciones",
+                    userIdStr,
+                    destination,
                     dto
             );
-            log.debug("Notificación enviada por WebSocket - Usuario ID: {}", usuarioId);
+
+            log.info("✅ Notificación enviada por WebSocket - Usuario ID: {}", usuarioId);
         } catch (Exception e) {
-            log.error("Error al enviar notificación por WebSocket - Usuario ID: {}", usuarioId, e);
+            log.error("❌ Error al enviar notificación por WebSocket - Usuario ID: {}", usuarioId, e);
         }
     }
 

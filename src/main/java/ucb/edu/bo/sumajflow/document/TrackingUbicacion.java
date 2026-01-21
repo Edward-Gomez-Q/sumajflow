@@ -165,11 +165,6 @@ public class TrackingUbicacion {
         private LocalDateTime finViaje;
     }
 
-    // ==================== NUEVO: Evento de cambio de estado ====================
-    /**
-     * Evento de cambio de estado del viaje
-     * Registra cada transición de estado con timestamp, ubicación y tipo
-     */
     @Data
     @Builder
     @NoArgsConstructor

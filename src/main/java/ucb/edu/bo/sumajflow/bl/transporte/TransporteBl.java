@@ -654,7 +654,7 @@ public class TransporteBl {
         if (estadoMasAtrasado.equals("Esperando iniciar")) {
             nuevoEstadoLote = "Aprobado - Pendiente de iniciar";
         } else if (estadoMasAtrasado.equals("Completado")) {
-            nuevoEstadoLote = "En Transporte Completo";
+            nuevoEstadoLote = "Transporte completo";
         } else {
             nuevoEstadoLote = "En Transporte";
         }
@@ -1062,7 +1062,7 @@ public class TransporteBl {
                 .puntoBalanzaCoop(puntoBalanzaCoop)
                 .puntoBalanzaDestino(puntoBalanzaDestino)
                 .puntoAlmacenDestino(puntoAlmacenDestino)
-                .estado(asignacion.getEstado())
+                .estado("Pendiente de aprobación por Ingenio/Comercializadora".equals(lote.getEstado()) ? "Esperando aprobación del destino" : asignacion.getEstado())
                 .numeroCamion(asignacion.getNumeroCamion())
                 .totalCamiones(lote.getCamionesSolicitados())
                 .build();

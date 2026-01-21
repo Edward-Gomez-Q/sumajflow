@@ -1,17 +1,15 @@
 package ucb.edu.bo.sumajflow.bl.tracking;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-import ucb.edu.bo.sumajflow.dto.tracking.*;
-
-import java.util.HashMap;
-import java.util.Map;
+import ucb.edu.bo.sumajflow.document.TrackingUbicacion;
+import ucb.edu.bo.sumajflow.dto.tracking.TrackingResponseDto;
 
 /**
- * Servicio para enviar actualizaciones de tracking en tiempo real via WebSocket
- * Permite que el frontend web vea los camiones moviéndose en el mapa
+ * Servicio para enviar actualizaciones de tracking por WebSocket
  */
 @Slf4j
 @Service
@@ -19,204 +17,109 @@ import java.util.Map;
 public class TrackingWebSocketService {
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectMapper objectMapper;
 
     /**
-     * Notifica actualización de ubicación a todos los suscriptores del lote
-     * Canal: /topic/tracking/lote/{loteId}
+     * Enviar actualización de tracking a todos los suscriptores de un lote
+     *
+     * @param loteId ID del lote
+     * @param trackingDto Datos de tracking actualizados
      */
-    public void notificarActualizacionUbicacion(Integer loteId, CamionEnRutaDto camion) {
+    public void enviarActualizacionLote(Integer loteId, TrackingResponseDto trackingDto) {
         try {
-            String destino = "/topic/tracking/lote/" + loteId;
+            String destination = "/topic/tracking/lote/" + loteId;
 
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "UBICACION_ACTUALIZADA");
-            mensaje.put("data", camion);
-            mensaje.put("timestamp", System.currentTimeMillis());
+            log.debug("📤 Enviando actualización de tracking a lote {} - Destino: {}", loteId, destination);
 
-            messagingTemplate.convertAndSend(destino, mensaje);
+            messagingTemplate.convertAndSend(destination, trackingDto);
 
-            log.debug("Ubicación enviada por WebSocket - Lote: {}, Camión: {}",
-                    loteId, camion.getPlacaVehiculo());
+            log.debug("✅ Actualización enviada exitosamente al lote {}", loteId);
+
         } catch (Exception e) {
-            log.error("Error al enviar ubicación por WebSocket: {}", e.getMessage());
+            log.error("❌ Error al enviar actualización de tracking al lote {}: {}", loteId, e.getMessage(), e);
         }
     }
 
     /**
-     * Notifica llegada a punto de control
-     * Canal: /topic/tracking/lote/{loteId}
+     * Enviar actualización específica de un camión
+     *
+     * @param asignacionCamionId ID de la asignación del camión
+     * @param trackingDto Datos de tracking actualizados
      */
-    public void notificarLlegadaPuntoControl(Integer loteId, Integer asignacionId,
-                                             String tipoPunto, String nombrePunto) {
+    public void enviarActualizacionCamion(Integer asignacionCamionId, TrackingResponseDto trackingDto) {
         try {
-            String destino = "/topic/tracking/lote/" + loteId;
+            String destination = "/topic/tracking/camion/" + asignacionCamionId;
 
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "LLEGADA_PUNTO_CONTROL");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("tipoPunto", tipoPunto);
-            mensaje.put("nombrePunto", nombrePunto);
-            mensaje.put("timestamp", System.currentTimeMillis());
+            log.debug("📤 Enviando actualización de tracking a camión {} - Destino: {}",
+                    asignacionCamionId, destination);
 
-            messagingTemplate.convertAndSend(destino, mensaje);
+            messagingTemplate.convertAndSend(destination, trackingDto);
 
-            log.info("Notificación de llegada enviada - Lote: {}, Punto: {}", loteId, nombrePunto);
+            log.debug("✅ Actualización enviada exitosamente al camión {}", asignacionCamionId);
+
         } catch (Exception e) {
-            log.error("Error al notificar llegada: {}", e.getMessage());
+            log.error("❌ Error al enviar actualización de tracking al camión {}: {}",
+                    asignacionCamionId, e.getMessage(), e);
         }
     }
 
     /**
-     * Notifica salida de punto de control
+     * Enviar actualización tanto al lote como al camión específico
+     *
+     * @param loteId ID del lote
+     * @param asignacionCamionId ID de la asignación del camión
+     * @param trackingDto Datos de tracking actualizados
      */
-    public void notificarSalidaPuntoControl(Integer loteId, Integer asignacionId,
-                                            String tipoPunto, String nombrePunto) {
-        try {
-            String destino = "/topic/tracking/lote/" + loteId;
+    public void enviarActualizacionCompleta(Integer loteId, Integer asignacionCamionId, TrackingResponseDto trackingDto) {
+        log.info("📡 Enviando actualización completa - Lote: {}, Camión: {}", loteId, asignacionCamionId);
 
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "SALIDA_PUNTO_CONTROL");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("tipoPunto", tipoPunto);
-            mensaje.put("nombrePunto", nombrePunto);
-            mensaje.put("timestamp", System.currentTimeMillis());
+        // Enviar al topic del lote (para vista general)
+        enviarActualizacionLote(loteId, trackingDto);
 
-            messagingTemplate.convertAndSend(destino, mensaje);
-
-            log.info("Notificación de salida enviada - Lote: {}, Punto: {}", loteId, nombrePunto);
-        } catch (Exception e) {
-            log.error("Error al notificar salida: {}", e.getMessage());
-        }
+        // Enviar al topic del camión (para vista detallada)
+        enviarActualizacionCamion(asignacionCamionId, trackingDto);
     }
 
     /**
-     * Notifica cambio de estado del camión
+     * Enviar notificación de evento importante (llegada a punto, cambio de estado, etc.)
+     *
+     * @param loteId ID del lote
+     * @param asignacionCamionId ID de la asignación
+     * @param tipoEvento Tipo de evento
+     * @param mensaje Mensaje descriptivo del evento
      */
-    public void notificarCambioEstado(Integer loteId, Integer asignacionId,
-                                      String estadoAnterior, String estadoNuevo) {
+    public void enviarEventoTracking(Integer loteId, Integer asignacionCamionId, String tipoEvento, String mensaje) {
         try {
-            String destino = "/topic/tracking/lote/" + loteId;
+            EventoTrackingDto evento = EventoTrackingDto.builder()
+                    .loteId(loteId)
+                    .asignacionCamionId(asignacionCamionId)
+                    .tipoEvento(tipoEvento)
+                    .mensaje(mensaje)
+                    .timestamp(java.time.LocalDateTime.now())
+                    .build();
 
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "CAMBIO_ESTADO");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("estadoAnterior", estadoAnterior);
-            mensaje.put("estadoNuevo", estadoNuevo);
-            mensaje.put("timestamp", System.currentTimeMillis());
+            String destinationLote = "/topic/tracking/lote/" + loteId + "/eventos";
+            String destinationCamion = "/topic/tracking/camion/" + asignacionCamionId + "/eventos";
 
-            messagingTemplate.convertAndSend(destino, mensaje);
+            messagingTemplate.convertAndSend(destinationLote, evento);
+            messagingTemplate.convertAndSend(destinationCamion, evento);
 
-            log.info("Notificación de cambio de estado - Lote: {}, Estado: {} -> {}",
-                    loteId, estadoAnterior, estadoNuevo);
+            log.info("📢 Evento de tracking enviado - Tipo: {}, Lote: {}, Camión: {}",
+                    tipoEvento, loteId, asignacionCamionId);
+
         } catch (Exception e) {
-            log.error("Error al notificar cambio de estado: {}", e.getMessage());
+            log.error("❌ Error al enviar evento de tracking: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Notifica que un camión se ha desconectado (offline)
-     */
-    public void notificarCamionOffline(Integer loteId, Integer asignacionId, String placaVehiculo) {
-        try {
-            String destino = "/topic/tracking/lote/" + loteId;
-
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "CAMION_OFFLINE");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("placaVehiculo", placaVehiculo);
-            mensaje.put("timestamp", System.currentTimeMillis());
-
-            messagingTemplate.convertAndSend(destino, mensaje);
-
-            log.warn("Camión offline notificado - Lote: {}, Placa: {}", loteId, placaVehiculo);
-        } catch (Exception e) {
-            log.error("Error al notificar camión offline: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Notifica que un camión se ha reconectado (online)
-     */
-    public void notificarCamionOnline(Integer loteId, Integer asignacionId, String placaVehiculo) {
-        try {
-            String destino = "/topic/tracking/lote/" + loteId;
-
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "CAMION_ONLINE");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("placaVehiculo", placaVehiculo);
-            mensaje.put("timestamp", System.currentTimeMillis());
-
-            messagingTemplate.convertAndSend(destino, mensaje);
-
-            log.info("Camión online notificado - Lote: {}, Placa: {}", loteId, placaVehiculo);
-        } catch (Exception e) {
-            log.error("Error al notificar camión online: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Notifica viaje completado
-     */
-    public void notificarViajeCompletado(Integer loteId, Integer asignacionId,
-                                         MetricasViajeDto metricas) {
-        try {
-            String destino = "/topic/tracking/lote/" + loteId;
-
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "VIAJE_COMPLETADO");
-            mensaje.put("asignacionCamionId", asignacionId);
-            mensaje.put("metricas", metricas);
-            mensaje.put("timestamp", System.currentTimeMillis());
-
-            messagingTemplate.convertAndSend(destino, mensaje);
-
-            log.info("Viaje completado notificado - Lote: {}, Asignación: {}", loteId, asignacionId);
-        } catch (Exception e) {
-            log.error("Error al notificar viaje completado: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Envía el estado completo del monitoreo (útil cuando un cliente se conecta)
-     */
-    public void enviarEstadoCompleto(Integer loteId, MonitoreoLoteDto monitoreo) {
-        try {
-            String destino = "/topic/tracking/lote/" + loteId;
-
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", "ESTADO_COMPLETO");
-            mensaje.put("data", monitoreo);
-            mensaje.put("timestamp", System.currentTimeMillis());
-
-            messagingTemplate.convertAndSend(destino, mensaje);
-
-            log.debug("Estado completo enviado - Lote: {}", loteId);
-        } catch (Exception e) {
-            log.error("Error al enviar estado completo: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Notifica a un usuario específico (para el transportista)
-     * Canal: /user/{userId}/queue/tracking
-     */
-    public void notificarUsuario(Integer usuarioId, String tipo, Object data) {
-        try {
-            Map<String, Object> mensaje = new HashMap<>();
-            mensaje.put("tipo", tipo);
-            mensaje.put("data", data);
-            mensaje.put("timestamp", System.currentTimeMillis());
-
-            messagingTemplate.convertAndSendToUser(
-                    usuarioId.toString(),
-                    "/queue/tracking",
-                    mensaje
-            );
-
-            log.debug("Notificación enviada a usuario: {}", usuarioId);
-        } catch (Exception e) {
-            log.error("Error al notificar usuario: {}", e.getMessage());
-        }
+    // DTO interno para eventos
+    @lombok.Data
+    @lombok.Builder
+    private static class EventoTrackingDto {
+        private Integer loteId;
+        private Integer asignacionCamionId;
+        private String tipoEvento;
+        private String mensaje;
+        private java.time.LocalDateTime timestamp;
     }
 }
