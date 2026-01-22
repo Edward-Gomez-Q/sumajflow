@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.tracking.TrackingBl;
 import ucb.edu.bo.sumajflow.dto.tracking.*;
-import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,7 +23,6 @@ import java.util.Map;
 public class TrackingController {
 
     private final TrackingBl trackingBl;
-    private final JwtUtil jwtUtil;
 
     // ==================== INICIAR TRACKING ====================
 
@@ -350,6 +348,34 @@ public class TrackingController {
 
         } catch (Exception e) {
             log.error("Error al obtener historial", e);
+            response.put("success", false);
+            response.put("message", "Error interno del servidor: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    @GetMapping("/asignacion/{asignacionId}/historial-por-estado")
+    public ResponseEntity<Map<String, Object>> getHistorialPorEstado(
+            @PathVariable Integer asignacionId,
+            @RequestHeader("Authorization") String token) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            HistorialPorEstadoDto historial = trackingBl.getHistorialPorEstado(asignacionId);
+
+            response.put("success", true);
+            response.put("data", historial);
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            log.error("Error al obtener historial por estado", e);
             response.put("success", false);
             response.put("message", "Error interno del servidor: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);

@@ -1,5 +1,7 @@
 package ucb.edu.bo.sumajflow.bl.ingenio;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -37,6 +39,7 @@ public class LotesIngenioBl {
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesBl auditoriaLotesBl;
+    private final ObjectMapper objectMapper;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
@@ -617,7 +620,8 @@ public class LotesIngenioBl {
                         a.getDescripcion(),
                         a.getObservaciones(),
                         a.getFechaRegistro(),
-                        a.getTipoUsuario()
+                        a.getTipoUsuario(),
+                        parseMetadataToStringMap(a.getMetadata())
                 ))
                 .collect(Collectors.toList());
         dto.setHistorialCambios(auditoriasDto);
@@ -627,5 +631,23 @@ public class LotesIngenioBl {
         dto.setUpdatedAt(lote.getUpdatedAt());
 
         return dto;
+    }
+    private Map<String, String> parseMetadataToStringMap(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+
+        try {
+            Map<String, Object> raw = objectMapper.readValue(
+                    json,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+
+            Map<String, String> out = new HashMap<>();
+            raw.forEach((k, v) -> out.put(k, v == null ? null : String.valueOf(v)));
+            return out;
+
+        } catch (Exception e) {
+            log.warn("No se pudo parsear metadata JSON: {}", json, e);
+            return Map.of();
+        }
     }
 }

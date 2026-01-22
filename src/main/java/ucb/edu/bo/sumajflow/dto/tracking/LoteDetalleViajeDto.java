@@ -38,14 +38,14 @@ public class LoteDetalleViajeDto {
     // Ruta - Distancia y tiempo
     private Double distanciaEstimadaKm;
     private Double tiempoEstimadoHoras;
-    private Boolean rutaCalculadaConExito; // true si usó OSRM, false si es línea recta
-    private String metodoCalculo; // "osrm" o "linea_recta"
+    private Boolean rutaCalculadaConExito;
+    private String metodoCalculo;
 
-    // Waypoints de la ruta (para mostrar en el mapa de Flutter)
-    private WaypointDto puntoOrigen;           // Mina
-    private WaypointDto puntoBalanzaCoop;      // Balanza Cooperativa
-    private WaypointDto puntoBalanzaDestino;   // Balanza Destino (Ingenio/Comercializadora)
-    private WaypointDto puntoAlmacenDestino;   // Almacén Final
+    // Waypoints de la ruta
+    private WaypointDto puntoOrigen;
+    private WaypointDto puntoBalanzaCoop;
+    private WaypointDto puntoBalanzaDestino;
+    private WaypointDto puntoAlmacenDestino;
 
     // Estado
     private String estado;

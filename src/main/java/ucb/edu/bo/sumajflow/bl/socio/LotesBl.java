@@ -1,5 +1,7 @@
 package ucb.edu.bo.sumajflow.bl.socio;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -41,6 +43,7 @@ public class LotesBl {
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final AsignacionCamionRepository asignacionCamionRepository;
+    private final ObjectMapper objectMapper;
 
     // Constantes de estados
     private static final String ESTADO_INICIAL = "Pendiente de aprobación cooperativa";
@@ -116,7 +119,6 @@ public class LotesBl {
         );
     }
 
-    // Método auxiliar para convertir camelCase a snake_case
     private String convertirCamelCaseASnakeCase(String camelCase) {
         if (camelCase == null || camelCase.isEmpty()) {
             return "fecha_creacion"; // Default
@@ -293,7 +295,8 @@ public class LotesBl {
                         a.getDescripcion(),
                         a.getObservaciones(),
                         a.getFechaRegistro(),
-                        a.getTipoUsuario()
+                        a.getTipoUsuario(),
+                        parseMetadataToStringMap(a.getMetadata())
                 ))
                 .collect(Collectors.toList());
         dto.setHistorialCambios(auditoriasDto);
@@ -302,6 +305,25 @@ public class LotesBl {
         dto.setUpdatedAt(lote.getUpdatedAt());
 
         return dto;
+    }
+
+    private Map<String, String> parseMetadataToStringMap(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+
+        try {
+            Map<String, Object> raw = objectMapper.readValue(
+                    json,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+
+            Map<String, String> out = new HashMap<>();
+            raw.forEach((k, v) -> out.put(k, v == null ? null : String.valueOf(v)));
+            return out;
+
+        } catch (Exception e) {
+            log.warn("No se pudo parsear metadata JSON: {}", json, e);
+            return Map.of();
+        }
     }
 
     /**

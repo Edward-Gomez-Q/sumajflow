@@ -20,4 +20,5 @@ public class UbicacionDto {
     private Double velocidad;
     private Double rumbo;
     private Double altitud;
+    private Boolean esOffline;
 }

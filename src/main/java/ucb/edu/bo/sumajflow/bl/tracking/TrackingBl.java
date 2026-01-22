@@ -27,9 +27,7 @@ public class TrackingBl {
     private final PersonaRepository personaRepository;
     private final TrackingWebSocketService trackingWebSocketService;
 
-    private static final long OFFLINE_THRESHOLD_MINUTES = 5;
-
-    // Radios de geofencing en metros
+    private static final long OFFLINE_THRESHOLD_SECONDS = 40;
     private static final int RADIO_MINA = 1000;
     private static final int RADIO_BALANZA_COOPERATIVA = 1000;
     private static final int RADIO_BALANZA_DESTINO = 1000;
@@ -85,7 +83,6 @@ public class TrackingBl {
                         .velocidadMaxima(0.0)
                         .build())
                 .historialUbicaciones(new ArrayList<>())
-                .ubicacionesPendientesSincronizar(new ArrayList<>())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
@@ -114,32 +111,32 @@ public class TrackingBl {
                             .orElseThrow(() -> new IllegalStateException("Error al crear tracking"));
                 });
 
-        // Detectar si es offline basado en el DTO o en el gap temporal
-        boolean esOffline = dto.getEsOffline() != null ? dto.getEsOffline() : false;
+        // ✅ Determinar si esta actualización viene de modo offline
+        boolean esActualizacionOffline = dto.getEsOffline() != null ? dto.getEsOffline() : false;
 
-        // Si no viene marcado como offline, detectar por gap temporal
-        if (!esOffline && tracking.getUbicacionActual() != null
+        // ✅ Verificar gap temporal solo si NO es una sincronización offline explícita
+        boolean huboCorteComunicacion = false;
+        if (!esActualizacionOffline && tracking.getUbicacionActual() != null
                 && tracking.getUbicacionActual().getTimestamp() != null) {
 
             LocalDateTime ahora = dto.getTimestampCaptura() != null
                     ? dto.getTimestampCaptura()
                     : LocalDateTime.now();
 
-            long minutosDesdeUltima = ChronoUnit.MINUTES.between(
+            long segundosDesdeUltima = ChronoUnit.SECONDS.between(
                     tracking.getUbicacionActual().getTimestamp(),
                     ahora
             );
 
-            // Si pasaron más de 5 minutos, considerar como offline
-            if (minutosDesdeUltima > OFFLINE_THRESHOLD_MINUTES) {
-                esOffline = true;
-                log.warn("⚠️ Detectado gap temporal de {} minutos, marcando como offline",
-                        minutosDesdeUltima);
+            // ✅ Si pasaron más de 40 segundos, hubo un corte
+            if (segundosDesdeUltima > OFFLINE_THRESHOLD_SECONDS) {
+                huboCorteComunicacion = true;
+                log.warn("⚠️ Detectado corte de comunicación de {} segundos (>{} seg), " +
+                                "las ubicaciones intermedias se perdieron",
+                        segundosDesdeUltima, OFFLINE_THRESHOLD_SECONDS);
             }
         }
-        // =======================================================================
 
-        // Guardar ubicación anterior en historial
         if (tracking.getUbicacionActual() != null) {
             TrackingUbicacion.PuntoUbicacion puntoHistorial = TrackingUbicacion.PuntoUbicacion.builder()
                     .lat(tracking.getUbicacionActual().getLat())
@@ -150,18 +147,22 @@ public class TrackingBl {
                     .rumbo(tracking.getUbicacionActual().getRumbo())
                     .altitud(tracking.getUbicacionActual().getAltitud())
                     .sincronizado(true)
-                    .esOffline(esOffline)
+                    .esOffline(huboCorteComunicacion || esActualizacionOffline)
+                    .estadoViaje(tracking.getEstadoViaje())
                     .build();
 
             tracking.getHistorialUbicaciones().add(puntoHistorial);
 
-            actualizarMetricas(tracking, dto);
+            if (!huboCorteComunicacion) {
+                actualizarMetricas(tracking, dto);
+            }
         }
 
         LocalDateTime timestamp = dto.getTimestampCaptura() != null
                 ? dto.getTimestampCaptura()
                 : LocalDateTime.now();
 
+        // ✅ Crear la nueva ubicación actual
         TrackingUbicacion.UbicacionActual nuevaUbicacion = TrackingUbicacion.UbicacionActual.builder()
                 .lat(dto.getLat())
                 .lng(dto.getLng())
@@ -182,7 +183,6 @@ public class TrackingBl {
 
         trackingRepository.save(tracking);
 
-        // Convertir a DTO y enviar por WebSocket
         TrackingResponseDto responseDto = convertToResponseDto(tracking);
         trackingWebSocketService.enviarActualizacionCompleta(
                 tracking.getLoteId(),
@@ -192,7 +192,9 @@ public class TrackingBl {
 
         return ActualizacionUbicacionResponseDto.builder()
                 .success(true)
-                .mensaje("Ubicación actualizada correctamente")
+                .mensaje(huboCorteComunicacion
+                        ? "Ubicación actualizada - Se detectó pérdida de señal previa"
+                        : "Ubicación actualizada correctamente")
                 .ubicacionRegistrada(UbicacionDto.builder()
                         .lat(dto.getLat())
                         .lng(dto.getLng())
@@ -220,10 +222,8 @@ public class TrackingBl {
         int fallidas = 0;
         List<String> errores = new ArrayList<>();
 
-        // Ordenar por timestamp
         ubicaciones.sort(Comparator.comparing(UbicacionOfflineDto::getTimestamp));
 
-        log.debug("📝 Agregando {} ubicaciones a pendientes de sincronizar", ubicaciones.size());
         for (UbicacionOfflineDto ubicacion : ubicaciones) {
             try {
                 if (!GeometryUtils.esUbicacionValida(ubicacion.getLat(), ubicacion.getLng())) {
@@ -240,12 +240,13 @@ public class TrackingBl {
                         .velocidad(ubicacion.getVelocidad())
                         .rumbo(ubicacion.getRumbo())
                         .altitud(ubicacion.getAltitud())
-                        .sincronizado(false)
+                        .sincronizado(true)
                         .esOffline(true)
+                        .estadoViaje(tracking.getEstadoViaje())
                         .build();
 
-                // Agregar a pendientes primero
-                tracking.getUbicacionesPendientesSincronizar().add(punto);
+                tracking.getHistorialUbicaciones().add(punto);
+                sincronizadas++;
 
             } catch (Exception e) {
                 errores.add("Error en ubicación " + ubicacion.getTimestamp() + ": " + e.getMessage());
@@ -253,21 +254,6 @@ public class TrackingBl {
             }
         }
 
-        log.debug("📦 Moviendo {} puntos de pendientes a historial",
-                tracking.getUbicacionesPendientesSincronizar().size());
-
-        for (TrackingUbicacion.PuntoUbicacion punto : tracking.getUbicacionesPendientesSincronizar()) {
-            punto.setSincronizado(true);
-            tracking.getHistorialUbicaciones().add(punto);
-            sincronizadas++;
-        }
-
-        // Limpiar pendientes
-        tracking.getUbicacionesPendientesSincronizar().clear();
-        log.debug("✅ Pendientes limpiados, {} ubicaciones ahora en historial", sincronizadas);
-        // ================================================================================
-
-        // Actualizar ubicación actual con la última
         if (!ubicaciones.isEmpty()) {
             UbicacionOfflineDto ultima = ubicaciones.getLast();
             tracking.setUbicacionActual(TrackingUbicacion.UbicacionActual.builder()
@@ -289,7 +275,7 @@ public class TrackingBl {
         tracking.setUpdatedAt(LocalDateTime.now());
 
         trackingRepository.save(tracking);
-        // Enviar actualización por WebSocket
+
         TrackingResponseDto responseDto = convertToResponseDto(tracking);
         trackingWebSocketService.enviarActualizacionCompleta(
                 tracking.getLoteId(),
@@ -297,9 +283,8 @@ public class TrackingBl {
                 responseDto
         );
 
-        log.info("📡 Sincronización enviada por WebSocket");
-
-        log.info("✅ Sincronización completada - Éxito: {}, Fallidas: {}", sincronizadas, fallidas);
+        log.info("✅ Sincronización completada - Éxito: {}, Fallidas: {}, VOLVIÓ A ONLINE",
+                sincronizadas, fallidas);
 
         return SincronizacionResponseDto.builder()
                 .success(fallidas == 0)
@@ -380,7 +365,6 @@ public class TrackingBl {
         tracking.setUpdatedAt(LocalDateTime.now());
         trackingRepository.save(tracking);
 
-        // Enviar actualización y evento por WebSocket
         TrackingResponseDto responseDto = convertToResponseDto(tracking);
         trackingWebSocketService.enviarActualizacionCompleta(
                 tracking.getLoteId(),
@@ -425,7 +409,7 @@ public class TrackingBl {
 
         tracking.setUpdatedAt(LocalDateTime.now());
         trackingRepository.save(tracking);
-        // Enviar actualización y evento por WebSocket
+
         TrackingResponseDto responseDto = convertToResponseDto(tracking);
         trackingWebSocketService.enviarActualizacionCompleta(
                 tracking.getLoteId(),
@@ -449,10 +433,29 @@ public class TrackingBl {
     public TrackingResponseDto getTrackingByAsignacion(Integer asignacionCamionId) {
         TrackingUbicacion tracking = trackingRepository.findByAsignacionCamionId(asignacionCamionId)
                 .orElseThrow(() -> new IllegalArgumentException("Tracking no encontrado para esta asignación"));
-
-        actualizarEstadoConexion(tracking);
+        verificarYActualizarEstadoConexion(tracking);
 
         return convertToResponseDto(tracking);
+    }
+
+    private void verificarYActualizarEstadoConexion(TrackingUbicacion tracking) {
+        if (tracking.getUltimaSincronizacion() == null) {
+            return;
+        }
+
+        long segundosDesdeUltimaSync = ChronoUnit.SECONDS.between(
+                tracking.getUltimaSincronizacion(),
+                LocalDateTime.now());
+
+        String estadoActual = segundosDesdeUltimaSync > OFFLINE_THRESHOLD_SECONDS
+                ? "offline"
+                : "online";
+
+        if (!estadoActual.equals(tracking.getEstadoConexion())) {
+            tracking.setEstadoConexion(estadoActual);
+            log.debug("Estado conexión calculado: {} ({} seg desde última sync)",
+                    estadoActual, segundosDesdeUltimaSync);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -463,6 +466,8 @@ public class TrackingBl {
                 .orElseThrow(() -> new IllegalArgumentException("Lote no encontrado"));
 
         List<TrackingUbicacion> trackings = trackingRepository.findByLoteId(loteId);
+
+        trackings.forEach(this::verificarYActualizarEstadoConexion);
 
         List<CamionEnRutaDto> camiones = trackings.stream()
                 .map(this::convertToCamionEnRutaDto)
@@ -485,7 +490,6 @@ public class TrackingBl {
                 .camiones(camiones)
                 .build();
     }
-
     @Transactional(readOnly = true)
     public HistorialUbicacionesDto getHistorialUbicaciones(Integer asignacionCamionId) {
         TrackingUbicacion tracking = trackingRepository.findByAsignacionCamionId(asignacionCamionId)
@@ -518,6 +522,61 @@ public class TrackingBl {
                 .ubicaciones(ubicaciones)
                 .resumen(construirResumenRuta(tracking, ubicaciones))
                 .build();
+    }
+
+    @Transactional
+    public void actualizarEstadoYRegistrarEvento(
+            Integer asignacionCamionId,
+            String estadoAnterior,
+            String estadoNuevo,
+            String tipoEvento,
+            Double lat,
+            Double lng) {
+
+        log.info("📊 Actualizando estado MongoDB - Asignación: {}, {} -> {}, Evento: {}",
+                asignacionCamionId, estadoAnterior, estadoNuevo, tipoEvento);
+
+        try {
+            TrackingUbicacion tracking = trackingRepository
+                    .findByAsignacionCamionId(asignacionCamionId)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Tracking no encontrado para asignación: " + asignacionCamionId));
+
+            tracking.setEstadoViaje(estadoNuevo);
+
+            TrackingUbicacion.EventoEstado evento = TrackingUbicacion.EventoEstado.builder()
+                    .timestamp(LocalDateTime.now())
+                    .estadoAnterior(estadoAnterior)
+                    .estadoNuevo(estadoNuevo)
+                    .lat(lat)
+                    .lng(lng)
+                    .tipoEvento(tipoEvento)
+                    .build();
+
+            tracking.getEventosEstado().add(evento);
+            tracking.setUpdatedAt(LocalDateTime.now());
+
+            trackingRepository.save(tracking);
+
+            TrackingResponseDto responseDto = convertToResponseDto(tracking);
+            trackingWebSocketService.enviarActualizacionCompleta(
+                    tracking.getLoteId(),
+                    tracking.getAsignacionCamionId(),
+                    responseDto
+            );
+
+            trackingWebSocketService.enviarEventoTracking(
+                    tracking.getLoteId(),
+                    tracking.getAsignacionCamionId(),
+                    tipoEvento,
+                    String.format("Cambio de estado: %s → %s", estadoAnterior, estadoNuevo)
+            );
+
+            log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado", estadoNuevo, tipoEvento);
+
+        } catch (Exception e) {
+            log.error("❌ Error al actualizar estado en MongoDB: {}", e.getMessage(), e);
+        }
     }
 
     private List<TrackingUbicacion.PuntoControl> construirPuntosControl(Lotes lote, AsignacionCamion asignacion) {
@@ -700,21 +759,6 @@ public class TrackingBl {
         }
     }
 
-    private void actualizarEstadoConexion(TrackingUbicacion tracking) {
-        if (tracking.getUltimaSincronizacion() == null) {
-            return;
-        }
-
-        long minutosDesdeUltimaSync = ChronoUnit.MINUTES.between(
-                tracking.getUltimaSincronizacion(), LocalDateTime.now());
-
-        if (minutosDesdeUltimaSync > OFFLINE_THRESHOLD_MINUTES) {
-            tracking.setEstadoConexion("offline");
-        } else {
-            tracking.setEstadoConexion("online");
-        }
-    }
-
     private String determinarAccionRequerida(GeofencingStatusDto geofencing) {
         if (geofencing.getPuedeRegistrarLlegada()) {
             return "registrar_llegada";
@@ -859,76 +903,126 @@ public class TrackingBl {
                 .puntosVisitados(puntosVisitados)
                 .build();
     }
-    /**
-     * Actualiza el estado del viaje en MongoDB y registra el evento de cambio de estado.
-     * @param asignacionCamionId ID de la asignación
-     * @param estadoAnterior Estado previo del viaje
-     * @param estadoNuevo Nuevo estado del viaje
-     * @param tipoEvento Tipo de evento (INICIO_VIAJE, LLEGADA_MINA, etc.)
-     * @param lat Latitud donde ocurrió el evento (opcional)
-     * @param lng Longitud donde ocurrió el evento (opcional)
-     */
-    @Transactional
-    public void actualizarEstadoYRegistrarEvento(
-            Integer asignacionCamionId,
-            String estadoAnterior,
-            String estadoNuevo,
-            String tipoEvento,
-            Double lat,
-            Double lng) {
 
-        log.info("📊 Actualizando estado MongoDB - Asignación: {}, {} -> {}, Evento: {}",
-                asignacionCamionId, estadoAnterior, estadoNuevo, tipoEvento);
+    @Transactional(readOnly = true)
+    public HistorialPorEstadoDto getHistorialPorEstado(Integer asignacionCamionId) {
+        log.info("📊 Obteniendo historial agrupado por estado - Asignación: {}", asignacionCamionId);
 
-        try {
-            TrackingUbicacion tracking = trackingRepository
-                    .findByAsignacionCamionId(asignacionCamionId)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Tracking no encontrado para asignación: " + asignacionCamionId));
+        TrackingUbicacion tracking = trackingRepository.findByAsignacionCamionId(asignacionCamionId)
+                .orElseThrow(() -> new IllegalArgumentException("Tracking no encontrado"));
 
-            // 1. Actualizar estado del viaje
-            tracking.setEstadoViaje(estadoNuevo);
+        List<TrackingUbicacion.PuntoUbicacion> historial = tracking.getHistorialUbicaciones();
 
-            // 2. Crear y agregar evento
-            TrackingUbicacion.EventoEstado evento = TrackingUbicacion.EventoEstado.builder()
-                    .timestamp(LocalDateTime.now())
-                    .estadoAnterior(estadoAnterior)
-                    .estadoNuevo(estadoNuevo)
-                    .lat(lat)
-                    .lng(lng)
-                    .tipoEvento(tipoEvento)
-                    .build();
-
-            tracking.getEventosEstado().add(evento);
-
-            // 3. Actualizar timestamp
-            tracking.setUpdatedAt(LocalDateTime.now());
-
-            // 4. Guardar en MongoDB
-            trackingRepository.save(tracking);
-
-            // Enviar actualización por WebSocket
-            TrackingResponseDto responseDto = convertToResponseDto(tracking);
-            trackingWebSocketService.enviarActualizacionCompleta(
-                    tracking.getLoteId(),
-                    tracking.getAsignacionCamionId(),
-                    responseDto
-            );
-
-            trackingWebSocketService.enviarEventoTracking(
-                    tracking.getLoteId(),
-                    tracking.getAsignacionCamionId(),
-                    tipoEvento,
-                    String.format("Cambio de estado: %s → %s", estadoAnterior, estadoNuevo)
-            );
-
-            log.info("📡 Actualización de estado enviada por WebSocket");
-
-            log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado",
-                    estadoNuevo, tipoEvento);
-
-        } catch (Exception e) {
-            log.error("❌ Error al actualizar estado en MongoDB: {}", e.getMessage(), e);
+        if (historial.isEmpty()) {
+            return construirHistorialVacio(tracking);
         }
+
+        Map<String, List<TrackingUbicacion.PuntoUbicacion>> historialPorEstado = historial.stream()
+                .collect(Collectors.groupingBy(
+                        punto -> punto.getEstadoViaje() != null ? punto.getEstadoViaje() : "Sin estado",
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<EstadoHistorialDto> estadosHistorial = historialPorEstado.entrySet().stream()
+                .map(entry -> construirEstadoHistorial(entry.getKey(), entry.getValue()))
+                .collect(Collectors.toList());
+
+        return HistorialPorEstadoDto.builder()
+                .asignacionCamionId(asignacionCamionId)
+                .loteId(tracking.getLoteId())
+                .codigoLote(tracking.getCodigoLote())
+                .placaVehiculo(tracking.getPlacaVehiculo())
+                .nombreTransportista(tracking.getNombreTransportista())
+                .totalUbicaciones(historial.size())
+                .estadosHistorial(estadosHistorial)
+                .build();
+    }
+
+    private EstadoHistorialDto construirEstadoHistorial(String estadoViaje, List<TrackingUbicacion.PuntoUbicacion> ubicaciones) {
+        if (ubicaciones.isEmpty()) {
+            return EstadoHistorialDto.builder()
+                    .estadoViaje(estadoViaje)
+                    .totalUbicaciones(0)
+                    .ubicaciones(List.of())
+                    .build();
+        }
+
+        ubicaciones.sort(Comparator.comparing(TrackingUbicacion.PuntoUbicacion::getTimestamp));
+
+        LocalDateTime inicioEstado = ubicaciones.getFirst().getTimestamp();
+        LocalDateTime finEstado = ubicaciones.getLast().getTimestamp();
+        long duracionSegundos = ChronoUnit.SECONDS.between(inicioEstado, finEstado);
+
+        double distanciaTotal = 0.0;
+        double velocidadMaxima = 0.0;
+        long tiempoMovimiento = 0;
+        int ubicacionesOffline = 0;
+
+        for (int i = 1; i < ubicaciones.size(); i++) {
+            TrackingUbicacion.PuntoUbicacion anterior = ubicaciones.get(i - 1);
+            TrackingUbicacion.PuntoUbicacion actual = ubicaciones.get(i);
+
+            double distancia = GeometryUtils.calcularDistancia(
+                    anterior.getLat(), anterior.getLng(),
+                    actual.getLat(), actual.getLng()
+            );
+            distanciaTotal += distancia;
+
+            if (actual.getVelocidad() != null) {
+                if (actual.getVelocidad() > velocidadMaxima) {
+                    velocidadMaxima = actual.getVelocidad();
+                }
+                if (actual.getVelocidad() > 1.0) {
+                    tiempoMovimiento += ChronoUnit.SECONDS.between(anterior.getTimestamp(), actual.getTimestamp());
+                }
+            }
+
+            if (Boolean.TRUE.equals(actual.getEsOffline())) {
+                ubicacionesOffline++;
+            }
+        }
+
+        double velocidadPromedio = tiempoMovimiento > 0
+                ? (distanciaTotal / tiempoMovimiento) * 3600
+                : 0.0;
+
+        List<UbicacionDto> ubicacionesDto = ubicaciones.stream()
+                .map(p -> UbicacionDto.builder()
+                        .lat(p.getLat())
+                        .lng(p.getLng())
+                        .timestamp(p.getTimestamp())
+                        .precision(p.getPrecision())
+                        .velocidad(p.getVelocidad())
+                        .rumbo(p.getRumbo())
+                        .altitud(p.getAltitud())
+                        .esOffline(p.getEsOffline())
+                        .build())
+                .collect(Collectors.toList());
+
+        return EstadoHistorialDto.builder()
+                .estadoViaje(estadoViaje)
+                .inicioEstado(inicioEstado)
+                .finEstado(finEstado)
+                .duracionSegundos(duracionSegundos)
+                .totalUbicaciones(ubicaciones.size())
+                .distanciaRecorridaKm(distanciaTotal)
+                .velocidadPromedioKmH(velocidadPromedio)
+                .velocidadMaximaKmH(velocidadMaxima)
+                .ubicacionesOffline(ubicacionesOffline)
+                .ubicaciones(ubicacionesDto)
+                .build();
+    }
+
+    private HistorialPorEstadoDto construirHistorialVacio(TrackingUbicacion tracking) {
+        return HistorialPorEstadoDto.builder()
+                .asignacionCamionId(tracking.getAsignacionCamionId())
+                .loteId(tracking.getLoteId())
+                .codigoLote(tracking.getCodigoLote())
+                .placaVehiculo(tracking.getPlacaVehiculo())
+                .nombreTransportista(tracking.getNombreTransportista())
+                .totalUbicaciones(0)
+                .estadosHistorial(List.of())
+                .build();
     }
 }

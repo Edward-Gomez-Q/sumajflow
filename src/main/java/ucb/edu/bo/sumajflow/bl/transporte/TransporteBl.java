@@ -908,7 +908,7 @@ public class TransporteBl {
                         ? lote.getLoteIngenioList().getFirst().getIngenioMineroId().getRazonSocial()
                         : lote.getLoteComercializadoraList().getFirst().getComercializadoraId().getRazonSocial()
                 )
-                .fechaAsignacion(asignacion.getFechaAsignacion())
+                .fechaAsignacion(asignacion.getCreatedAt())
                 .mineralTags(lote.getLoteMineralesList().stream()
                         .map(lm -> lm.getMineralesId().getNomenclatura())
                         .collect(Collectors.toList()))
