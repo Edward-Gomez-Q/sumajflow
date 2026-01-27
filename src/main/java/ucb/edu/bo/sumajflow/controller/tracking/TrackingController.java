@@ -412,4 +412,31 @@ public class TrackingController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+    @GetMapping("/asignacion/{asignacionId}/evidencias")
+    public ResponseEntity<Map<String, Object>> getEvidenciasViaje(
+            @PathVariable Integer asignacionId,
+            @RequestHeader("Authorization") String token) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            EvidenciasViajeDto evidencias = trackingBl.getEvidenciasViaje(asignacionId);
+
+            response.put("success", true);
+            response.put("data", evidencias);
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            log.error("Error al obtener evidencias", e);
+            response.put("success", false);
+            response.put("message", "Error interno del servidor: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
 }

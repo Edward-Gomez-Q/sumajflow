@@ -10,6 +10,8 @@ import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 import ucb.edu.bo.sumajflow.repository.mongodb.TrackingUbicacionRepository;
 import ucb.edu.bo.sumajflow.utils.GeometryUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -26,6 +28,7 @@ public class TrackingBl {
     private final LotesRepository lotesRepository;
     private final PersonaRepository personaRepository;
     private final TrackingWebSocketService trackingWebSocketService;
+    private final ObjectMapper objectMapper;
 
     private static final long OFFLINE_THRESHOLD_SECONDS = 40;
     private static final int RADIO_MINA = 1000;
@@ -1148,16 +1151,14 @@ public class TrackingBl {
                     .max(Comparator.comparing(TrackingUbicacion.PuntoUbicacion::getTimestamp))
                     .orElse(null);
 
-            if (ultimoPunto != null) {
-                ubicacionFinal = UbicacionDto.builder()
-                        .lat(ultimoPunto.getLat())
-                        .lng(ultimoPunto.getLng())
-                        .timestamp(ultimoPunto.getTimestamp())
-                        .velocidad(ultimoPunto.getVelocidad())
-                        .rumbo(ultimoPunto.getRumbo())
-                        .altitud(ultimoPunto.getAltitud())
-                        .build();
-            }
+            ubicacionFinal = UbicacionDto.builder()
+                    .lat(ultimoPunto.getLat())
+                    .lng(ultimoPunto.getLng())
+                    .timestamp(ultimoPunto.getTimestamp())
+                    .velocidad(ultimoPunto.getVelocidad())
+                    .rumbo(ultimoPunto.getRumbo())
+                    .altitud(ultimoPunto.getAltitud())
+                    .build();
         } else if (tracking.getUbicacionActual() != null) {
             ubicacionFinal = UbicacionDto.builder()
                     .lat(tracking.getUbicacionActual().getLat())
@@ -1188,6 +1189,160 @@ public class TrackingBl {
                 .finViaje(tracking.getMetricas() != null ? tracking.getMetricas().getFinViaje() : null)
                 .createdAt(tracking.getCreatedAt())
                 .updatedAt(tracking.getUpdatedAt())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public EvidenciasViajeDto getEvidenciasViaje(Integer asignacionCamionId) {
+        log.info("📸 Obteniendo evidencias de viaje - Asignación: {}", asignacionCamionId);
+
+        AsignacionCamion asignacion = asignacionCamionRepository.findById(asignacionCamionId)
+                .orElseThrow(() -> new IllegalArgumentException("Asignación de camión no encontrada"));
+
+        Lotes lote = asignacion.getLotesId();
+        Transportista transportista = asignacion.getTransportistaId();
+        Persona persona = personaRepository.findByUsuariosId(transportista.getUsuariosId()).orElse(null);
+
+        String codigoLote = "LT-" + lote.getFechaCreacion().getYear() + "-" + String.format("%04d", lote.getId());
+
+        EvidenciasViajeDto.EvidenciasViajeDtoBuilder builder = EvidenciasViajeDto.builder()
+                .asignacionCamionId(asignacionCamionId)
+                .loteId(lote.getId())
+                .codigoLote(codigoLote)
+                .estadoViaje(asignacion.getEstado())
+                .numeroCamion(asignacion.getNumeroCamion())
+                .placaVehiculo(transportista.getPlacaVehiculo())
+                .nombreTransportista(persona != null ?
+                        persona.getNombres() + " " + persona.getPrimerApellido() : "N/A");
+
+        // Parsear las observaciones JSONB
+        String observacionesJson = asignacion.getObservaciones();
+
+        if (observacionesJson != null && !observacionesJson.isEmpty()) {
+            try {
+                JsonNode root = objectMapper.readTree(observacionesJson);
+
+                // Inicio de viaje
+                if (root.has("inicio_viaje")) {
+                    builder.inicioViaje(parseInicioViaje(root.get("inicio_viaje")));
+                }
+
+                // Llegada a mina
+                if (root.has("llegada_mina")) {
+                    builder.llegadaMina(parseLlegadaMina(root.get("llegada_mina")));
+                }
+
+                // Carguío completo
+                if (root.has("carguio_completo")) {
+                    builder.carguioCompleto(parseCarguioCompleto(root.get("carguio_completo")));
+                }
+
+                // Pesaje origen
+                if (root.has("pesaje_origen")) {
+                    builder.pesajeOrigen(parsePesaje(root.get("pesaje_origen")));
+                }
+
+                // Pesaje destino
+                if (root.has("pesaje_destino")) {
+                    builder.pesajeDestino(parsePesaje(root.get("pesaje_destino")));
+                }
+
+                // Llegada almacén
+                if (root.has("llegada_almacen")) {
+                    builder.llegadaAlmacen(parseLlegadaAlmacen(root.get("llegada_almacen")));
+                }
+
+                // Descarga iniciada
+                if (root.has("descarga_iniciada")) {
+                    builder.descargaIniciada(parseDescargaIniciada(root.get("descarga_iniciada")));
+                }
+
+                // Ruta finalizada
+                if (root.has("ruta_finalizada")) {
+                    builder.rutaFinalizada(parseRutaFinalizada(root.get("ruta_finalizada")));
+                }
+
+            } catch (Exception e) {
+                log.error("❌ Error al parsear observaciones JSON: {}", e.getMessage(), e);
+            }
+        }
+
+        return builder.build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaInicioViaje parseInicioViaje(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaInicioViaje.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .usuarioId(node.has("usuario_id") ? node.get("usuario_id").asInt() : null)
+                .dispositivo(node.has("dispositivo") ? node.get("dispositivo").asText() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaLlegadaMina parseLlegadaMina(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaLlegadaMina.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .observaciones(node.has("observaciones") ? node.get("observaciones").asText() : null)
+                .palaOperativa(node.has("pala_operativa") ? node.get("pala_operativa").asBoolean() : null)
+                .mineralVisible(node.has("mineral_visible") ? node.get("mineral_visible").asBoolean() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaCarguioCompleto parseCarguioCompleto(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaCarguioCompleto.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .fotoCamionCargadoUrl(node.has("foto_camion_cargado_url") ?
+                        node.get("foto_camion_cargado_url").asText() : null)
+                .mineralCargadoCompletamente(node.has("mineral_cargado_completamente") ?
+                        node.get("mineral_cargado_completamente").asBoolean() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaPesaje parsePesaje(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaPesaje.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .pesoBrutoKg(node.has("peso_bruto_kg") ? node.get("peso_bruto_kg").asDouble() : null)
+                .pesoTaraKg(node.has("peso_tara_kg") ? node.get("peso_tara_kg").asDouble() : null)
+                .pesoNetoKg(node.has("peso_neto_kg") ? node.get("peso_neto_kg").asDouble() : null)
+                .ticketPesajeUrl(node.has("ticket_pesaje_url") ? node.get("ticket_pesaje_url").asText() : null)
+                .observaciones(node.has("observaciones") ? node.get("observaciones").asText() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaLlegadaAlmacen parseLlegadaAlmacen(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaLlegadaAlmacen.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .observaciones(node.has("observaciones") ? node.get("observaciones").asText() : null)
+                .confirmacionLlegada(node.has("confirmacion_llegada") ?
+                        node.get("confirmacion_llegada").asBoolean() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaDescargaIniciada parseDescargaIniciada(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaDescargaIniciada.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .observaciones(node.has("observaciones") ? node.get("observaciones").asText() : null)
+                .build();
+    }
+
+    private EvidenciasViajeDto.EvidenciaRutaFinalizada parseRutaFinalizada(JsonNode node) {
+        return EvidenciasViajeDto.EvidenciaRutaFinalizada.builder()
+                .lat(node.has("lat") ? node.get("lat").asDouble() : null)
+                .lng(node.has("lng") ? node.get("lng").asDouble() : null)
+                .timestamp(node.has("timestamp") ? LocalDateTime.parse(node.get("timestamp").asText()) : null)
+                .observacionesFinales(node.has("observaciones_finales") ?
+                        node.get("observaciones_finales").asText() : null)
                 .build();
     }
 }
