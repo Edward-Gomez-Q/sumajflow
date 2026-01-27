@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -14,7 +15,7 @@ import java.util.List;
 public class LiquidacionCreateDto {
     private Integer socioId;
     private String tipoLiquidacion; // "venta_directa", "venta_concentrado", "cobro_ingenio"
-    private LocalDate fechaLiquidacion;
+    private LocalDateTime fechaLiquidacion;
     private String moneda; // "BOB", "USD"
     private BigDecimal pesoLiquidado;
 

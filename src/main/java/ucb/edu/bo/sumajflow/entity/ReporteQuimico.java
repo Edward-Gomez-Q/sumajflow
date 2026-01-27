@@ -43,7 +43,7 @@ public class ReporteQuimico implements Serializable {
 
     @NotNull
     @Column(name = "fecha_analisis", nullable = false)
-    private LocalDate fechaAnalisis;
+    private LocalDateTime fechaAnalisis;
 
     @Column(name = "ley_ag", precision = 8, scale = 4)
     private BigDecimal leyAg;

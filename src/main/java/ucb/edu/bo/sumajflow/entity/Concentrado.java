@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -39,7 +41,7 @@ public class Concentrado implements Serializable {
 
     @NotNull
     @Size(min = 1, max = 50)
-    @Column(name = "codigo_concentrado", nullable = false, length = 50)
+    @Column(name = "codigo_concentrado", nullable = false, length = 50, unique = true)
     private String codigoConcentrado;
 
     @NotNull
@@ -59,6 +61,13 @@ public class Concentrado implements Serializable {
     @Size(max = 50)
     @Column(name = "estado", length = 50)
     private String estado;
+
+    @Column(name = "numero_sacos")
+    private Integer numeroSacos;
+
+    @Column(name = "observaciones", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String observaciones;
 
     @Column(name = "fecha_inicio")
     private LocalDateTime fechaInicio;
@@ -94,7 +103,7 @@ public class Concentrado implements Serializable {
     @Builder.Default
     private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
 
-    // NUEVO: Relación con procesos de planta (movido desde Lotes)
+    // Relación con procesos de planta (Kanban)
     @OneToMany(mappedBy = "concentradoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LoteProcesoPlanta> loteProcesoPlantaList = new ArrayList<>();
@@ -121,7 +130,7 @@ public class Concentrado implements Serializable {
         liquidacionConcentrado.setConcentradoId(null);
     }
 
-    // NUEVO: Métodos helper para lote proceso planta
+    // Métodos helper para lote proceso planta
     public void addLoteProcesoPlanta(LoteProcesoPlanta loteProcesoPlanta) {
         loteProcesoPlantaList.add(loteProcesoPlanta);
         loteProcesoPlanta.setConcentradoId(this);
@@ -136,6 +145,9 @@ public class Concentrado implements Serializable {
     protected void onCreate() {
         if (estado == null) {
             estado = "creado";
+        }
+        if (fechaInicio == null) {
+            fechaInicio = LocalDateTime.now();
         }
     }
 }

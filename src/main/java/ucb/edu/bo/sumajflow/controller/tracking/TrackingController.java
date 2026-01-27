@@ -381,4 +381,35 @@ public class TrackingController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+    /**
+     * Obtiene el resumen final de tracking para asignaciones completadas
+     * GET /tracking/asignacion/{asignacionId}/resumen-final
+     */
+    @GetMapping("/asignacion/{asignacionId}/resumen-final")
+    public ResponseEntity<Map<String, Object>> getResumenFinal(
+            @PathVariable Integer asignacionId,
+            @RequestHeader("Authorization") String token) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            ResumenFinalTrackingDto resumen = trackingBl.getResumenFinalTracking(asignacionId);
+
+            response.put("success", true);
+            response.put("data", resumen);
+
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            log.error("Error al obtener resumen final", e);
+            response.put("success", false);
+            response.put("message", "Error interno del servidor: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
 }

@@ -7,6 +7,7 @@ import ucb.edu.bo.sumajflow.entity.Concentrado;
 import ucb.edu.bo.sumajflow.entity.LoteProcesoPlanta;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface LoteProcesoPlantaRepository extends JpaRepository<LoteProcesoPlanta, Integer> {
 
@@ -27,4 +28,16 @@ public interface LoteProcesoPlantaRepository extends JpaRepository<LoteProcesoPl
             "AND lpp.estado != 'completado' " +
             "ORDER BY lpp.orden ASC")
     List<LoteProcesoPlanta> findProcesosPendientes(@Param("concentrado") Concentrado concentrado);
+
+    // Obtener procesos de un concentrado ordenados
+    List<LoteProcesoPlanta> findByConcentradoIdOrderByOrdenAsc(Concentrado concentrado);
+
+    // Obtener proceso actual (primer pendiente)
+    @Query("SELECT lpp FROM LoteProcesoPlanta lpp WHERE lpp.concentradoId = :concentrado AND lpp.estado = 'pendiente' ORDER BY lpp.orden ASC")
+    Optional<LoteProcesoPlanta> findPrimerPendiente(@Param("concentrado") Concentrado concentrado);
+
+    // Verificar si todos los procesos están completados
+    @Query("SELECT CASE WHEN COUNT(lpp) = 0 THEN true ELSE false END FROM LoteProcesoPlanta lpp WHERE lpp.concentradoId = :concentrado AND lpp.estado != 'completado'")
+    boolean todosCompletados(@Param("concentrado") Concentrado concentrado);
+
 }

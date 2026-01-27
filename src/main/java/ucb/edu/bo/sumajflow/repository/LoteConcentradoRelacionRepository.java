@@ -29,4 +29,9 @@ public interface LoteConcentradoRelacionRepository extends JpaRepository<LoteCon
     // Contar lotes de un concentrado
     @Query("SELECT COUNT(lcr) FROM LoteConcentradoRelacion lcr WHERE lcr.concentradoId = :concentrado")
     long contarLotesDeConcentrado(@Param("concentrado") Concentrado concentrado);
+
+
+    // Verificar si un lote ya está en un concentrado
+    @Query("SELECT CASE WHEN COUNT(lcr) > 0 THEN true ELSE false END FROM LoteConcentradoRelacion lcr WHERE lcr.loteComplejoId = :lote")
+    boolean existsByLoteComplejoId(@Param("lote") Lotes lote);
 }

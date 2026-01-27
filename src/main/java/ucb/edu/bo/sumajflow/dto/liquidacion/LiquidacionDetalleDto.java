@@ -19,7 +19,7 @@ public class LiquidacionDetalleDto {
     private String socioCi;
     private String socioTelefono;
     private String tipoLiquidacion;
-    private LocalDate fechaLiquidacion;
+    private LocalDateTime fechaLiquidacion;
     private String moneda;
     private BigDecimal pesoLiquidado;
     private BigDecimal valorBruto;

@@ -1,20 +1,22 @@
-package ucb.edu.bo.sumajflow.dto.liquidacion;
+package ucb.edu.bo.sumajflow.dto.ingenio;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class LiquidacionResponseDto {
+@Builder
+public class LiquidacionServicioResponseDto {
+
     private Integer id;
+    private Integer concentradoId;
+    private String codigoConcentrado;
     private Integer socioId;
-    private String socioNombre;
+    private String socioNombres;
+    private String socioApellidos;
     private String tipoLiquidacion;
     private LocalDateTime fechaLiquidacion;
     private String moneda;
@@ -22,14 +24,8 @@ public class LiquidacionResponseDto {
     private BigDecimal valorBruto;
     private BigDecimal valorNeto;
     private String estado;
-
-    // Información relacionada
-    private Integer loteId;
-    private String loteInfo;
-    private Integer concentradoId;
-    private String concentradoInfo;
-    private Integer reporteQuimicoId;
-
+    private String urlDocumentoLiquidacion;
+    private String urlComprobantePago;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

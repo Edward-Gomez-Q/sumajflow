@@ -32,10 +32,10 @@ public class RoutingService {
         try {
             // Construir la URL con todos los waypoints en orden
             String coordinates = String.format("%s,%s;%s,%s;%s,%s;%s,%s",
-                    minaLng, minaLat,                           // Punto 1: Mina
-                    balanzaCoopLng, balanzaCoopLat,            // Punto 2: Balanza cooperativa
-                    balanzaDestinoLng, balanzaDestinoLat,      // Punto 3: Balanza destino
-                    almacenLng, almacenLat                     // Punto 4: Almacén destino
+                    minaLng, minaLat,
+                    balanzaCoopLng, balanzaCoopLat,
+                    balanzaDestinoLng, balanzaDestinoLat,
+                    almacenLng, almacenLat
             );
 
             String url = OSRM_API_URL + coordinates + "?overview=false&geometries=polyline";
@@ -93,7 +93,6 @@ public class RoutingService {
             BigDecimal lat3, BigDecimal lng3,
             BigDecimal lat4, BigDecimal lng4
     ) {
-        // Calcular distancia entre cada par de puntos consecutivos
         double d1 = calcularDistanciaHaversine(
                 lat1.doubleValue(), lng1.doubleValue(),
                 lat2.doubleValue(), lng2.doubleValue()
@@ -108,8 +107,6 @@ public class RoutingService {
         );
 
         double distanciaTotal = d1 + d2 + d3;
-
-        // Estimar tiempo (asumiendo velocidad promedio de 40 km/h)
         double tiempoHoras = distanciaTotal / 40.0;
 
         log.info("Ruta calculada (línea recta): {} km, {} horas estimadas",
@@ -124,9 +121,6 @@ public class RoutingService {
                 .build();
     }
 
-    /**
-     * Fórmula de Haversine para calcular distancia entre dos coordenadas
-     */
     private double calcularDistanciaHaversine(double lat1, double lon1, double lat2, double lon2) {
         final int R = 6371; // Radio de la Tierra en km
 

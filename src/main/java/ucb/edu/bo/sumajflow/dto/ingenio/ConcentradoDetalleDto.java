@@ -1,38 +1,52 @@
 package ucb.edu.bo.sumajflow.dto.ingenio;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
+import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ConcentradoDetalleDto {
+
+    // Información básica
     private Integer id;
     private String codigoConcentrado;
-    private Integer ingenioMineroId;
-    private String ingenioNombre;
-    private Integer socioPropietarioId;
-    private String socioPropietarioNombre;
-    private String socioCi;
-    private String socioTelefono;
+    private String estado;
     private BigDecimal pesoInicial;
     private BigDecimal pesoFinal;
     private BigDecimal merma;
-    private BigDecimal porcentajeMerma;
     private String mineralPrincipal;
-    private String estado;
+    private Integer numeroSacos;
+
+    // Ingenio
+    private Integer ingenioId;
+    private String ingenioNombre;
+    private String ingenioNIT;
+    private String ingenioContacto;
+    private String ingenioDireccion;
+    private String ingenioDepartamento;
+    private String ingenioMunicipio;
+    private String almacenNombre;
+    private BigDecimal almacenLatitud;
+    private BigDecimal almacenLongitud;
+    private Integer socioId;
+    private String socioNombres;
+    private String socioApellidos;
+    private String socioCi;
+    private String socioTelefono;
+    private List<LoteDetalleConcentradoDto> lotes;
+    private List<MineralInfoDto> minerales;
+    private List<ProcesoPlantaDto> procesos;
+    private ReporteQuimicoSimpleDto reporteQuimico;
     private LocalDateTime fechaInicio;
     private LocalDateTime fechaFin;
     private LocalDateTime createdAt;
-
-    // Lotes relacionados
-    private List<LoteConcentradoRelacionDto> lotesRelacionados;
-
-    // Procesos de planta
-    private List<ProcesoPlantaDto> procesos;
+    private LocalDateTime updatedAt;
+    private List<Map<String, Object>> historialCambios;
 }

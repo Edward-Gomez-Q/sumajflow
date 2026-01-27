@@ -12,6 +12,8 @@ import java.util.Optional;
 
 public interface LiquidacionConcentradoRepository extends JpaRepository<LiquidacionConcentrado, Integer> {
 
+
+    
     // Buscar por liquidación
     List<LiquidacionConcentrado> findByLiquidacionId(Liquidacion liquidacion);
 

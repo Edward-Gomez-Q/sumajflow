@@ -10,7 +10,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +38,7 @@ public class Liquidacion implements Serializable {
 
     @NotNull
     @Column(name = "fecha_liquidacion", nullable = false)
-    private LocalDate fechaLiquidacion;
+    private LocalDateTime fechaLiquidacion;
 
     @Size(max = 10)
     @Column(name = "moneda", length = 10)

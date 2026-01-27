@@ -8,47 +8,33 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * DTO de respuesta con información completa del tracking
- */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TrackingResponseDto {
-
-    private String id;
+public class ResumenFinalTrackingDto {
     private Integer asignacionCamionId;
     private Integer loteId;
-    private Integer transportistaId;
-
-    // Info del viaje
     private String codigoLote;
     private String placaVehiculo;
     private String nombreTransportista;
-
-    // Ubicación actual
-    private UbicacionDto ubicacionActual;
-
-    // Estado
     private String estadoViaje;
-    private String estadoConexion;
-    private LocalDateTime ultimaSincronizacion;
+
+    // Ubicación final
+    private UbicacionDto ubicacionFinal;
+
+    // Métricas del viaje
+    private MetricasViajeDto metricas;
 
     // Puntos de control
     private List<PuntoControlDto> puntosControl;
 
-    // Métricas
-    private MetricasViajeDto metricas;
-
-    // Geofencing
-    private GeofencingStatusDto geofencingStatus;
-
-    // Eventos de estado
+    // Eventos del viaje
     private List<EventoEstadoDto> eventosEstado;
 
+    // Timestamps
+    private LocalDateTime inicioViaje;
+    private LocalDateTime finViaje;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
 }
-

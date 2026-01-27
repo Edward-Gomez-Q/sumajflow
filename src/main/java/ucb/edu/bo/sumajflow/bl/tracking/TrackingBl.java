@@ -111,10 +111,8 @@ public class TrackingBl {
                             .orElseThrow(() -> new IllegalStateException("Error al crear tracking"));
                 });
 
-        // ✅ Determinar si esta actualización viene de modo offline
         boolean esActualizacionOffline = dto.getEsOffline() != null ? dto.getEsOffline() : false;
 
-        // ✅ Verificar gap temporal solo si NO es una sincronización offline explícita
         boolean huboCorteComunicacion = false;
         if (!esActualizacionOffline && tracking.getUbicacionActual() != null
                 && tracking.getUbicacionActual().getTimestamp() != null) {
@@ -128,7 +126,6 @@ public class TrackingBl {
                     ahora
             );
 
-            // ✅ Si pasaron más de 40 segundos, hubo un corte
             if (segundosDesdeUltima > OFFLINE_THRESHOLD_SECONDS) {
                 huboCorteComunicacion = true;
                 log.warn("⚠️ Detectado corte de comunicación de {} segundos (>{} seg), " +
@@ -162,7 +159,6 @@ public class TrackingBl {
                 ? dto.getTimestampCaptura()
                 : LocalDateTime.now();
 
-        // ✅ Crear la nueva ubicación actual
         TrackingUbicacion.UbicacionActual nuevaUbicacion = TrackingUbicacion.UbicacionActual.builder()
                 .lat(dto.getLat())
                 .lng(dto.getLng())
@@ -554,6 +550,7 @@ public class TrackingBl {
                     .build();
 
             tracking.getEventosEstado().add(evento);
+            actualizarEstadoPuntosDeControl(tracking, tipoEvento);
             tracking.setUpdatedAt(LocalDateTime.now());
 
             trackingRepository.save(tracking);
@@ -572,10 +569,107 @@ public class TrackingBl {
                     String.format("Cambio de estado: %s → %s", estadoAnterior, estadoNuevo)
             );
 
-            log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado", estadoNuevo, tipoEvento);
+            log.info("✅ MongoDB actualizado - Estado: {}, Evento: {} registrado, Puntos actualizados",
+                    estadoNuevo, tipoEvento);
 
         } catch (Exception e) {
             log.error("❌ Error al actualizar estado en MongoDB: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Actualizar estado de puntos de control basado en eventos de estado
+     */
+    private void actualizarEstadoPuntosDeControl(TrackingUbicacion tracking, String tipoEvento) {
+        if (tracking.getPuntosControl() == null || tracking.getPuntosControl().isEmpty()) {
+            return;
+        }
+
+        log.info("🔄 Actualizando estados de puntos de control para evento: {}", tipoEvento);
+
+        switch (tipoEvento) {
+            case "LLEGADA_MINA":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "mina".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            p.setEstado("en_punto");
+                            if (p.getLlegada() == null) {
+                                p.setLlegada(LocalDateTime.now());
+                            }
+                            log.info("✅ Mina marcada como 'en_punto'");
+                        });
+                break;
+
+            case "FIN_CARGUIO":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "mina".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            p.setEstado("completado");
+                            if (p.getSalida() == null) {
+                                p.setSalida(LocalDateTime.now());
+                            }
+                            log.info("✅ Mina marcada como 'completado'");
+                        });
+                break;
+
+            case "PESAJE_COOPERATIVA":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "balanza_cooperativa".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            if (p.getLlegada() == null) {
+                                p.setLlegada(LocalDateTime.now());
+                            }
+                            p.setSalida(LocalDateTime.now());
+                            p.setEstado("completado");
+                            log.info("✅ Balanza cooperativa marcada como 'completado'");
+                        });
+                break;
+
+            case "PESAJE_DESTINO":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "balanza_ingenio".equals(p.getTipo()) || "balanza_comercializadora".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            if (p.getLlegada() == null) {
+                                p.setLlegada(LocalDateTime.now());
+                            }
+                            p.setSalida(LocalDateTime.now());
+                            p.setEstado("completado");
+                            log.info("✅ Balanza destino marcada como 'completado'");
+                        });
+                break;
+
+            case "LLEGADA_ALMACEN":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "almacen_ingenio".equals(p.getTipo()) || "almacen_comercializadora".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            p.setEstado("en_punto");
+                            if (p.getLlegada() == null) {
+                                p.setLlegada(LocalDateTime.now());
+                            }
+                            log.info("✅ Almacén marcado como 'en_punto'");
+                        });
+                break;
+
+            case "FIN_DESCARGA":
+                tracking.getPuntosControl().stream()
+                        .filter(p -> "almacen_ingenio".equals(p.getTipo()) || "almacen_comercializadora".equals(p.getTipo()))
+                        .findFirst()
+                        .ifPresent(p -> {
+                            p.setEstado("completado");
+                            if (p.getSalida() == null) {
+                                p.setSalida(LocalDateTime.now());
+                            }
+                            log.info("✅ Almacén marcado como 'completado'");
+                        });
+                break;
+
+            default:
+                log.debug("Tipo de evento sin actualización de puntos: {}", tipoEvento);
         }
     }
 
@@ -806,11 +900,24 @@ public class TrackingBl {
                         .collect(Collectors.toList()))
                 .metricas(convertToMetricasDto(tracking.getMetricas()))
                 .geofencingStatus(geofencing)
+                .eventosEstado(tracking.getEventosEstado().stream()
+                        .map(this::convertToEventoEstadoDto)
+                        .collect(Collectors.toList()))
                 .createdAt(tracking.getCreatedAt())
                 .updatedAt(tracking.getUpdatedAt())
                 .build();
     }
 
+    private EventoEstadoDto convertToEventoEstadoDto(TrackingUbicacion.EventoEstado evento) {
+        return EventoEstadoDto.builder()
+                .timestamp(evento.getTimestamp())
+                .estadoAnterior(evento.getEstadoAnterior())
+                .estadoNuevo(evento.getEstadoNuevo())
+                .lat(evento.getLat())
+                .lng(evento.getLng())
+                .tipoEvento(evento.getTipoEvento())
+                .build();
+    }
     private PuntoControlDto convertToPuntoControlDto(TrackingUbicacion.PuntoControl punto) {
         return PuntoControlDto.builder()
                 .tipo(punto.getTipo())
@@ -1023,6 +1130,64 @@ public class TrackingBl {
                 .nombreTransportista(tracking.getNombreTransportista())
                 .totalUbicaciones(0)
                 .estadosHistorial(List.of())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public ResumenFinalTrackingDto getResumenFinalTracking(Integer asignacionCamionId) {
+        log.info("📊 Obteniendo resumen final de tracking - Asignación: {}", asignacionCamionId);
+
+        TrackingUbicacion tracking = trackingRepository.findByAsignacionCamionId(asignacionCamionId)
+                .orElseThrow(() -> new IllegalArgumentException("Tracking no encontrado"));
+
+        // Obtener última ubicación registrada
+        UbicacionDto ubicacionFinal = null;
+        if (!tracking.getHistorialUbicaciones().isEmpty()) {
+            TrackingUbicacion.PuntoUbicacion ultimoPunto = tracking.getHistorialUbicaciones()
+                    .stream()
+                    .max(Comparator.comparing(TrackingUbicacion.PuntoUbicacion::getTimestamp))
+                    .orElse(null);
+
+            if (ultimoPunto != null) {
+                ubicacionFinal = UbicacionDto.builder()
+                        .lat(ultimoPunto.getLat())
+                        .lng(ultimoPunto.getLng())
+                        .timestamp(ultimoPunto.getTimestamp())
+                        .velocidad(ultimoPunto.getVelocidad())
+                        .rumbo(ultimoPunto.getRumbo())
+                        .altitud(ultimoPunto.getAltitud())
+                        .build();
+            }
+        } else if (tracking.getUbicacionActual() != null) {
+            ubicacionFinal = UbicacionDto.builder()
+                    .lat(tracking.getUbicacionActual().getLat())
+                    .lng(tracking.getUbicacionActual().getLng())
+                    .timestamp(tracking.getUbicacionActual().getTimestamp())
+                    .velocidad(tracking.getUbicacionActual().getVelocidad())
+                    .rumbo(tracking.getUbicacionActual().getRumbo())
+                    .altitud(tracking.getUbicacionActual().getAltitud())
+                    .build();
+        }
+
+        return ResumenFinalTrackingDto.builder()
+                .asignacionCamionId(tracking.getAsignacionCamionId())
+                .loteId(tracking.getLoteId())
+                .codigoLote(tracking.getCodigoLote())
+                .placaVehiculo(tracking.getPlacaVehiculo())
+                .nombreTransportista(tracking.getNombreTransportista())
+                .estadoViaje(tracking.getEstadoViaje())
+                .ubicacionFinal(ubicacionFinal)
+                .metricas(convertToMetricasDto(tracking.getMetricas()))
+                .puntosControl(tracking.getPuntosControl().stream()
+                        .map(this::convertToPuntoControlDto)
+                        .collect(Collectors.toList()))
+                .eventosEstado(tracking.getEventosEstado().stream()
+                        .map(this::convertToEventoEstadoDto)
+                        .collect(Collectors.toList()))
+                .inicioViaje(tracking.getMetricas() != null ? tracking.getMetricas().getInicioViaje() : null)
+                .finViaje(tracking.getMetricas() != null ? tracking.getMetricas().getFinViaje() : null)
+                .createdAt(tracking.getCreatedAt())
+                .updatedAt(tracking.getUpdatedAt())
                 .build();
     }
 }

@@ -43,4 +43,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Intege
   // Contar liquidaciones por estado
   @Query("SELECT COUNT(l) FROM Liquidacion l WHERE l.estado = :estado")
   long countByEstado(@Param("estado") String estado);
+
+  // Buscar por tipo
+  List<Liquidacion> findByTipoLiquidacionOrderByFechaLiquidacionDesc(String tipoLiquidacion);
 }
