@@ -55,7 +55,7 @@ public class BalanzaComercializadoraController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-    // Método auxiliar para extraer el usuario del token
+    // Metodo auxiliar para extraer el usuario del token
     private Integer extractUsuarioId(String token) {
         String cleanToken = token.replace("Bearer ", "");
         return jwtUtil.extractUsuarioId(cleanToken);

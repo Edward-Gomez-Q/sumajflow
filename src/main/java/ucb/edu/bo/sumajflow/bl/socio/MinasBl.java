@@ -325,7 +325,7 @@ public class MinasBl {
 
         for (Minas mina : minasActivas) {
             // Excluir la mina que estamos actualizando
-            if (minaIdExcluir != null && mina.getId().equals(minaIdExcluir)) {
+            if (mina.getId().equals(minaIdExcluir)) {
                 continue;
             }
 
@@ -417,11 +417,12 @@ public class MinasBl {
      * Verifica si un socio pertenece a una cooperativa
      */
     private boolean esSocioDeCooperativa(Socio socio, Cooperativa cooperativa) {
-        // Aquí deberías verificar en cooperativa_socio que el socio esté APROBADO
-        // Esto depende de tu tabla cooperativa_socio
-        // Por simplicidad, asumiré que tienes un repository para esto
-        // Si no, puedes hacer la query directamente
-        return true; // TODO: Implementar verificación real cuando tengas CooperativaSocioRepository
+        boolean flag = false;
+        CooperativaSocio cs = socio.getCooperativaSocioList().getFirst();
+        if(cs.getCooperativaId().equals(cooperativa)) {
+            flag = true;
+        }
+        return flag;
     }
 
     /**
@@ -608,9 +609,7 @@ public class MinasBl {
 
         // Información del socio
         dto.setSocioId(mina.getSocioId().getId());
-        // Aquí deberías obtener el nombre completo del socio desde la tabla Persona
-        // Por simplicidad, asumo que tienes una relación o puedes hacerlo
-        dto.setSocioNombre("Socio #" + mina.getSocioId().getId()); // TODO: Obtener nombre real
+        dto.setSocioNombre("Socio #" + mina.getSocioId().getId());
 
         // Metadatos
         dto.setCreatedAt(mina.getCreatedAt());
@@ -640,7 +639,6 @@ public class MinasBl {
         }
 
         // Validar rangos de latitud y longitud (Bolivia)
-        // Bolivia: Latitud ~ -22° a -10°, Longitud ~ -70° a -58°
         if (dto.getLatitud().doubleValue() < -23 || dto.getLatitud().doubleValue() > -9) {
             throw new IllegalArgumentException("La latitud debe estar en el rango válido para Bolivia");
         }

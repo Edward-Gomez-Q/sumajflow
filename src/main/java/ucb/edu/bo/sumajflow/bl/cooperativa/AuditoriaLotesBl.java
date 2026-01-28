@@ -146,7 +146,6 @@ public class AuditoriaLotesBl {
         );
     }
 
-    // Método auxiliar para convertir Map a JSON (simplificado)
     private String convertMapToJsonb(Map<String, Object> map) {
         try {
             return objectMapper.writeValueAsString(map);

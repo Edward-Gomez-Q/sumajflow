@@ -116,7 +116,7 @@ public class LotesIngenioBl {
         LoteIngenio loteIngenio = obtenerLoteIngenioConPermisos(loteId, ingenio);
         Lotes lote = loteIngenio.getLotesId();
 
-        // Usar el mismo método de conversión que socio
+        // Usar el mismo metodo de conversión que socio
         return convertToDetalleDto(lote, ingenio);
     }
 

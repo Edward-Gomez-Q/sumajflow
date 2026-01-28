@@ -219,7 +219,7 @@ public class PerfilCooperativaController {
     }
 
     /**
-     * Método auxiliar para extraer el usuario del token
+     * Metodo auxiliar para extraer el usuario del token
      */
     private Integer extractUsuarioId(String token) {
         String cleanToken = token.replace("Bearer ", "");

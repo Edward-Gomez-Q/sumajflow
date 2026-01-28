@@ -623,7 +623,7 @@ public class SectoresBl {
     }
     /**
      * Obtener todos los sectores ACTIVOS de la cooperativa a la que pertenece el socio
-     * Este método se usa desde el endpoint /socio/sectores
+     * Este metodo se usa desde el endpoint /socio/sectores
      */
     @Transactional(readOnly = true)
     public List<SectorResponseDto> getSectoresByCooperativaParaSocio(Integer usuarioId) {
@@ -646,7 +646,7 @@ public class SectoresBl {
 
     /**
      * Obtener un sector por ID (validando que el socio pertenezca a la cooperativa del sector)
-     * Este método se usa desde el endpoint /socio/sectores/{id}
+     * Este metodo se usa desde el endpoint /socio/sectores/{id}
      */
     @Transactional(readOnly = true)
     public SectorResponseDto getSectorByIdParaSocio(Integer sectorId, Integer usuarioId) {
@@ -669,7 +669,7 @@ public class SectoresBl {
 
     /**
      * Obtener estadísticas de sectores para el socio
-     * Este método se usa desde el endpoint /socio/sectores/estadisticas
+     * Este metodo se usa desde el endpoint /socio/sectores/estadisticas
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getEstadisticasParaSocio(Integer usuarioId) {

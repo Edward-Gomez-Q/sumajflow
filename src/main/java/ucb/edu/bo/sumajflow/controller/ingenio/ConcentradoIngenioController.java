@@ -448,7 +448,6 @@ public class ConcentradoIngenioController {
         }
     }
 
-    // Método auxiliar para extraer usuario del token
     private Integer extractUsuarioId(String token) {
         String cleanToken = token.replace("Bearer ", "");
         return jwtUtil.extractUsuarioId(cleanToken);

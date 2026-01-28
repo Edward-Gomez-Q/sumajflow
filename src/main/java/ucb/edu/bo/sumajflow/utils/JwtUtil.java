@@ -100,7 +100,7 @@ public class JwtUtil {
         return extractClaim(token, claims -> claims.get("id", Integer.class));
     }
 
-    // Método para extraer el estado de aprobación
+    // Metodo para extraer el estado de aprobación
     public Boolean extractAprobado(String token) {
         return extractClaim(token, claims -> claims.get("aprobado", Boolean.class));
     }

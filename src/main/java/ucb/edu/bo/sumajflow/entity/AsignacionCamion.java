@@ -76,7 +76,7 @@ public class AsignacionCamion implements Serializable {
     @Builder.Default
     private List<Pesajes> pesajesList = new ArrayList<>();
 
-    // Método helper para sincronización bidireccional
+    // Metodo helper para sincronización bidireccional
     public void addPesaje(Pesajes pesaje) {
         pesajesList.add(pesaje);
         pesaje.setAsignacionCamionId(this);

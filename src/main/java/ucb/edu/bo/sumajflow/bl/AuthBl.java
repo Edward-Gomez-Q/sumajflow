@@ -52,7 +52,7 @@ public class AuthBl {
     private final TransportistaRepository transportistaRepository;
 
     /**
-     * Método de login con contexto HTTP
+     * Metodo de login con contexto HTTP
      */
     @Transactional
     public LoginResponseDto login(String email, String password, String ipOrigen, String userAgent) {
@@ -93,7 +93,7 @@ public class AuthBl {
     }
 
     /**
-     * Método para refrescar el token
+     * Metodo para refrescar el token
      */
     @Transactional
     public LoginResponseDto refreshToken(String refreshToken) {
@@ -139,7 +139,7 @@ public class AuthBl {
     }
 
     /**
-     * Método principal para procesar el onboarding según el tipo de usuario
+     * Metodo principal para procesar el onboarding según el tipo de usuario
      */
     @Transactional
     public Usuarios processOnBoarding(OnBoardingDto onBoardingDto, String ipOrigen, String userAgent) {
