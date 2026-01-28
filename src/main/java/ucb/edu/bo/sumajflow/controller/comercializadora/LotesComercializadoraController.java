@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.comercializadora.LotesComercializadoraBl;
 import ucb.edu.bo.sumajflow.dto.comercializadora.*;
+import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
@@ -70,13 +71,12 @@ public class LotesComercializadoraController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error interno del servidor: " + e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body(response);
         }
     }
 
     /**
-     * Obtener detalle completo de un lote
+     * Obtener detalle completo de un lote - AHORA RETORNA LoteDetalleDto
      * GET /comercializadora/lotes/{id}/detalle
      */
     @GetMapping("/{id}/detalle")
@@ -88,7 +88,7 @@ public class LotesComercializadoraController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            LoteDetalleComercializadoraDto lote = lotesComercializadoraBl.getLoteDetalleCompleto(id, usuarioId);
+            LoteDetalleDto lote = lotesComercializadoraBl.getLoteDetalleCompleto(id, usuarioId);
 
             response.put("success", true);
             response.put("data", lote);
@@ -102,13 +102,12 @@ public class LotesComercializadoraController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error interno del servidor: " + e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body(response);
         }
     }
 
     /**
-     * Aprobar lote desde la comercializadora
+     * Aprobar lote desde la comercializadora - AHORA RETORNA LoteDetalleDto
      * PUT /comercializadora/lotes/{id}/aprobar
      */
     @PutMapping("/{id}/aprobar")
@@ -128,7 +127,7 @@ public class LotesComercializadoraController {
             String metodoHttp = request.getMethod();
             String endpoint = request.getRequestURI();
 
-            LoteDetalleComercializadoraDto lote = lotesComercializadoraBl.aprobarLote(
+            LoteDetalleDto lote = lotesComercializadoraBl.aprobarLote(
                     id,
                     aprobacionDto,
                     usuarioId,
@@ -150,7 +149,6 @@ public class LotesComercializadoraController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error interno del servidor: " + e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body(response);
         }
     }
@@ -197,12 +195,9 @@ public class LotesComercializadoraController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error interno del servidor: " + e.getMessage());
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body(response);
         }
     }
-
-    // Método auxiliar para extraer el usuario del token
     private Integer extractUsuarioId(String token) {
         String cleanToken = token.replace("Bearer ", "");
         return jwtUtil.extractUsuarioId(cleanToken);

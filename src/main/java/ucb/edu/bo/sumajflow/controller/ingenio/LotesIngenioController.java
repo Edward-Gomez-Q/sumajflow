@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.ingenio.LotesIngenioBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
+import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
@@ -76,7 +77,7 @@ public class LotesIngenioController {
     }
 
     /**
-     * Obtener detalle completo de un lote
+     * Obtener detalle completo de un lote - AHORA RETORNA LoteDetalleDto
      * GET /ingenio/lotes/{id}/detalle
      */
     @GetMapping("/{id}/detalle")
@@ -88,7 +89,7 @@ public class LotesIngenioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            LoteDetalleIngenioDto lote = lotesIngenioBl.getLoteDetalleCompleto(id, usuarioId);
+            LoteDetalleDto lote = lotesIngenioBl.getLoteDetalleCompleto(id, usuarioId);
 
             response.put("success", true);
             response.put("data", lote);
@@ -108,7 +109,7 @@ public class LotesIngenioController {
     }
 
     /**
-     * Aprobar lote desde el ingenio
+     * Aprobar lote desde el ingenio - AHORA RETORNA LoteDetalleDto
      * PUT /ingenio/lotes/{id}/aprobar
      */
     @PutMapping("/{id}/aprobar")
@@ -128,7 +129,7 @@ public class LotesIngenioController {
             String metodoHttp = request.getMethod();
             String endpoint = request.getRequestURI();
 
-            LoteDetalleIngenioDto lote = lotesIngenioBl.aprobarLote(
+            LoteDetalleDto lote = lotesIngenioBl.aprobarLote(
                     id,
                     aprobacionDto,
                     usuarioId,

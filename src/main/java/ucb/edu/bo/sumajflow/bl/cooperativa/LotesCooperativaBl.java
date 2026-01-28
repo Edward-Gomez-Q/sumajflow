@@ -10,6 +10,7 @@ import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.cooperativa.*;
 import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
 import ucb.edu.bo.sumajflow.dto.socio.AuditoriaLoteDto;
+import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
@@ -74,7 +75,7 @@ public class LotesCooperativaBl {
     }
 
     /**
-     * Obtener detalle completo de un lote
+     * Obtener detalle completo de un lote - AHORA USA LoteDetalleDto COMPARTIDO
      */
     @Transactional(readOnly = true)
     public LoteDetalleDto getDetalleLote(Integer loteId, Integer usuarioId) {
@@ -84,93 +85,7 @@ public class LotesCooperativaBl {
         Cooperativa cooperativa = obtenerCooperativaDelUsuario(usuarioId);
         Lotes lote = obtenerLoteConPermisos(loteId, cooperativa);
 
-        return convertToDetalleDtoWithPoints(lote, cooperativa);
-    }
-
-    private LoteDetalleDto convertToDetalleDtoWithPoints(Lotes lote, Cooperativa cooperativa) {
-        LoteDetalleDto dto = new LoteDetalleDto();
-        // Información del lote
-        dto.setId(lote.getId());
-        dto.setEstado(lote.getEstado());
-        dto.setFechaCreacion(lote.getFechaCreacion());
-        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
-        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
-        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
-        dto.setObservaciones(lote.getObservaciones());
-
-        // Información de la mina
-        Minas mina = lote.getMinasId();
-        dto.setMinaId(mina.getId());
-        dto.setMinaNombre(mina.getNombre());
-        dto.setMinaLatitud(mina.getLatitud());
-        dto.setMinaLongitud(mina.getLongitud());
-        dto.setSectorNombre(mina.getSectoresId().getNombre());
-
-        // Información del socio
-        Socio socio = mina.getSocioId();
-        dto.setSocioId(socio.getId());
-
-        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
-        if (persona != null) {
-            dto.setSocioNombre(persona.getNombres() + " " + persona.getPrimerApellido());
-            dto.setSocioCi(persona.getCi());
-            dto.setSocioTelefono(persona.getNumeroCelular());
-        }
-
-        // Información de minerales
-        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
-        dto.setMinerales(
-                loteMinerales.stream()
-                        .map(lm -> new MineralInfoDto(
-                                lm.getMineralesId().getId(),
-                                lm.getMineralesId().getNombre(),
-                                lm.getMineralesId().getNomenclatura()
-                        ))
-                        .collect(Collectors.toList())
-        );
-
-        // Información de operación
-        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
-        dto.setTipoOperacion(lote.getTipoOperacion());
-        dto.setTipoMineral(lote.getTipoMineral());
-
-        // Información del destino
-        if (lote.getTipoOperacion().equals("procesamiento_planta")) {
-            LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote).orElse(null);
-            if (loteIngenio != null) {
-                IngenioMinero ingenio = loteIngenio.getIngenioMineroId();
-                dto.setDestinoId(ingenio.getId());
-                dto.setDestinoNombre(ingenio.getRazonSocial());
-                dto.setDestinoTipo("ingenio");
-                dto.setDestinoNit(ingenio.getNit());
-                dto.setDestinoContacto(ingenio.getCorreoContacto());
-                dto.setDestinoDireccion(ingenio.getDireccion());
-                dto.setDestinoAlmacenLatitud(ingenio.getAlmacenesIngenioList().getFirst().getLatitud());
-                dto.setDestinoAlmacenLongitud(ingenio.getAlmacenesIngenioList().getFirst().getLongitud());
-                dto.setDestinoBalanzaLatitud(ingenio.getBalanzasIngenioList().getFirst().getLatitud());
-                dto.setDestinoBalanzaLongitud(ingenio.getBalanzasIngenioList().getFirst().getLongitud());
-            }
-        } else {
-            LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
-            if (loteComercializadora != null) {
-                Comercializadora comercializadora = loteComercializadora.getComercializadoraId();
-                dto.setDestinoId(comercializadora.getId());
-                dto.setDestinoNombre(comercializadora.getRazonSocial());
-                dto.setDestinoTipo("comercializadora");
-                dto.setDestinoNit(comercializadora.getNit());
-                dto.setDestinoContacto(comercializadora.getCorreoContacto());
-                dto.setDestinoDireccion(comercializadora.getDireccion());
-                dto.setDestinoAlmacenLatitud(comercializadora.getAlmacenesList().getFirst().getLatitud());
-                dto.setDestinoAlmacenLongitud(comercializadora.getAlmacenesList().getFirst().getLongitud());
-                dto.setDestinoBalanzaLatitud(comercializadora.getBalanzasList().getFirst().getLatitud());
-                dto.setDestinoBalanzaLongitud(comercializadora.getBalanzasList().getFirst().getLongitud());
-            }
-        }
-        //Informaciond de la cooperativa
-        dto.setCooperativaBalanzaLongitud(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
-        dto.setCooperativaBalanzaLatitud(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
-
-        return dto;
+        return convertToDetalleDto(lote, cooperativa);
     }
 
     /**
@@ -191,6 +106,7 @@ public class LotesCooperativaBl {
                 .map(this::convertToTransportistaDto)
                 .collect(Collectors.toList());
     }
+
     /**
      * Obtener todos los lotes de la cooperativa con filtros y paginación
      */
@@ -265,147 +181,6 @@ public class LotesCooperativaBl {
     }
 
     /**
-     * Convertir camelCase a snake_case para queries nativas
-     */
-    private String convertirCamelCaseASnakeCase(String camelCase) {
-        if (camelCase == null || camelCase.isEmpty()) {
-            return "fecha_creacion";
-        }
-
-        // Mapeo manual de campos comunes
-        switch (camelCase) {
-            case "fechaCreacion":
-                return "fecha_creacion";
-            case "fechaAprobacionCooperativa":
-                return "fecha_aprobacion_cooperativa";
-            case "fechaAprobacionDestino":
-                return "fecha_aprobacion_destino";
-            case "fechaInicioTransporte":
-                return "fecha_inicio_transporte";
-            case "fechaFinTransporte":
-                return "fecha_fin_transporte";
-            case "tipoOperacion":
-                return "tipo_operacion";
-            case "tipoMineral":
-                return "tipo_mineral";
-            case "pesoTotalEstimado":
-                return "peso_total_estimado";
-            case "pesoTotalReal":
-                return "peso_total_real";
-            case "camionesSolicitados":
-                return "camiones_solicitados";
-            case "minasId":
-                return "minas_id";
-            case "estado":
-                return "estado";
-            case "id":
-                return "id";
-            default:
-                // Conversión genérica: convierte camelCase a snake_case
-                return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
-        }
-    }
-
-    /**
-     * Convertir Lotes a LoteCooperativaResponseDto con toda la información
-     */
-    private LoteCooperativaResponseDto convertToCooperativaResponseDto(Lotes lote) {
-        LoteCooperativaResponseDto dto = new LoteCooperativaResponseDto();
-
-        // Información básica del lote
-        dto.setId(lote.getId());
-        dto.setEstado(lote.getEstado());
-        dto.setCamionesSolicitados(lote.getCamionesSolicitados());
-        dto.setTipoOperacion(lote.getTipoOperacion());
-        dto.setTipoMineral(lote.getTipoMineral());
-
-        // Información de la mina
-        Minas mina = lote.getMinasId();
-        dto.setMinaId(mina.getId());
-        dto.setMinaNombre(mina.getNombre());
-        dto.setMinaLatitud(mina.getLatitud());
-        dto.setMinaLongitud(mina.getLongitud());
-
-        // Información del sector
-        Sectores sector = mina.getSectoresId();
-        dto.setSectorId(sector.getId());
-        dto.setSectorNombre(sector.getNombre());
-        dto.setSectorColor(sector.getColor());
-
-        // Información del socio (dueño de la mina)
-        Socio socio = mina.getSocioId();
-        dto.setSocioId(socio.getId());
-        dto.setSocioEstado(socio.getEstado());
-
-        // Obtener datos de la persona del socio
-        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
-        if (persona != null) {
-            dto.setSocioNombres(persona.getNombres());
-            dto.setSocioApellidos(persona.getPrimerApellido() +
-                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
-            dto.setSocioCi(persona.getCi());
-            dto.setSocioTelefono(persona.getNumeroCelular());
-        }
-
-        // Obtener minerales del lote
-        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
-        dto.setMinerales(
-                loteMinerales.stream()
-                        .map(lm -> new MineralInfoDto(
-                                lm.getMineralesId().getId(),
-                                lm.getMineralesId().getNombre(),
-                                lm.getMineralesId().getNomenclatura()
-                        ))
-                        .collect(Collectors.toList())
-        );
-
-        // Obtener información del destino (ingenio o comercializadora)
-        if ("procesamiento_planta".equals(lote.getTipoOperacion())) {
-            LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote).orElse(null);
-            if (loteIngenio != null) {
-                IngenioMinero ingenio = loteIngenio.getIngenioMineroId();
-                dto.setDestinoId(ingenio.getId());
-                dto.setDestinoNombre(ingenio.getRazonSocial());
-                dto.setDestinoTipo("ingenio");
-                dto.setDestinoNit(ingenio.getNit());
-            }
-        } else { // venta_directa
-            LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
-            if (loteComercializadora != null) {
-                Comercializadora comercializadora = loteComercializadora.getComercializadoraId();
-                dto.setDestinoId(comercializadora.getId());
-                dto.setDestinoNombre(comercializadora.getRazonSocial());
-                dto.setDestinoTipo("comercializadora");
-                dto.setDestinoNit(comercializadora.getNit());
-            }
-        }
-
-        // Fechas
-        dto.setFechaCreacion(lote.getFechaCreacion());
-        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
-        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
-        dto.setFechaInicioTransporte(lote.getFechaInicioTransporte());
-        dto.setFechaFinTransporte(lote.getFechaFinTransporte());
-
-        // Pesos
-        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
-        dto.setPesoTotalReal(lote.getPesoTotalReal());
-
-        // Cantidad de camiones asignados
-        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
-        dto.setCamioneAsignados(asignaciones.size());
-
-        // Observaciones
-        dto.setObservaciones(lote.getObservaciones());
-
-        // Metadata
-        dto.setCreatedAt(lote.getFechaCreacion());
-        dto.setUpdatedAt(lote.getUpdatedAt());
-
-        return dto;
-    }
-
-    /**
      * Aprobar lote y asignar transportistas
      */
     @Transactional
@@ -475,7 +250,7 @@ public class LotesCooperativaBl {
 
         log.info("Lote aprobado exitosamente - ID: {}", loteId);
 
-        return convertToDetalleDto(lote);
+        return convertToDetalleDto(lote, cooperativa);
     }
 
     /**
@@ -526,6 +301,28 @@ public class LotesCooperativaBl {
         notificarRechazoAlSocio(lote, rechazoDto.getMotivoRechazo());
 
         log.info("Lote rechazado - ID: {}", loteId);
+    }
+
+    /**
+     * Obtener detalle completo de un lote (cualquier estado) - AHORA USA LoteDetalleDto COMPARTIDO
+     */
+    @Transactional(readOnly = true)
+    public LoteDetalleDto getLoteDetalleCompleto(Integer loteId, Integer usuarioId) {
+        log.debug("Obteniendo detalle completo del lote ID: {} para cooperativa - Usuario ID: {}", loteId, usuarioId);
+
+        // Obtener cooperativa del usuario
+        Cooperativa cooperativa = obtenerCooperativaDelUsuario(usuarioId);
+
+        // Obtener lote
+        Lotes lote = lotesRepository.findById(loteId)
+                .orElseThrow(() -> new IllegalArgumentException("Lote no encontrado"));
+
+        // Verificar que el lote pertenece a la cooperativa
+        if (!perteneceACooperativa(lote, cooperativa)) {
+            throw new IllegalArgumentException("No tienes permiso para acceder a este lote");
+        }
+
+        return convertToDetalleDto(lote, cooperativa);
     }
 
     // ==================== MÉTODOS DE VALIDACIÓN ====================
@@ -730,7 +527,191 @@ public class LotesCooperativaBl {
         return cooperativaIdDelLote.equals(cooperativa.getId());
     }
 
+    private String convertirCamelCaseASnakeCase(String camelCase) {
+        if (camelCase == null || camelCase.isEmpty()) {
+            return "fecha_creacion";
+        }
+        switch (camelCase) {
+            case "fechaCreacion":
+                return "fecha_creacion";
+            case "fechaAprobacionCooperativa":
+                return "fecha_aprobacion_cooperativa";
+            case "fechaAprobacionDestino":
+                return "fecha_aprobacion_destino";
+            case "fechaInicioTransporte":
+                return "fecha_inicio_transporte";
+            case "fechaFinTransporte":
+                return "fecha_fin_transporte";
+            case "tipoOperacion":
+                return "tipo_operacion";
+            case "tipoMineral":
+                return "tipo_mineral";
+            case "pesoTotalEstimado":
+                return "peso_total_estimado";
+            case "pesoTotalReal":
+                return "peso_total_real";
+            case "camionesSolicitados":
+                return "camiones_solicitados";
+            case "minasId":
+                return "minas_id";
+            case "estado":
+                return "estado";
+            case "id":
+                return "id";
+            default:
+                // Conversión genérica: convierte camelCase a snake_case
+                return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+        }
+    }
+
     // ==================== MÉTODOS DE CONVERSIÓN DTO ====================
+
+    /**
+     * Convertir a LoteDetalleDto compartido (mismo que usan socio, ingenio, comercializadora)
+     */
+    private LoteDetalleDto convertToDetalleDto(Lotes lote, Cooperativa cooperativa) {
+        LoteDetalleDto dto = new LoteDetalleDto();
+
+        dto.setId(lote.getId());
+        dto.setEstado(lote.getEstado());
+        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
+        dto.setTipoOperacion(lote.getTipoOperacion());
+        dto.setTipoMineral(lote.getTipoMineral());
+
+        // Información de la mina
+        Minas mina = lote.getMinasId();
+        dto.setMinaId(mina.getId());
+        dto.setMinaNombre(mina.getNombre());
+        dto.setMinaFotoUrl(mina.getFotoUrl());
+        dto.setMinaLatitud(mina.getLatitud() != null ? mina.getLatitud().doubleValue() : null);
+        dto.setMinaLongitud(mina.getLongitud() != null ? mina.getLongitud().doubleValue() : null);
+        dto.setSectorNombre(mina.getSectoresId().getNombre());
+
+        // Balanza de la cooperativa
+        if (!cooperativa.getBalanzaCooperativaList().isEmpty()) {
+            dto.setCooperativaBalanzaLatitud(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
+            dto.setCooperativaBalanzaLongitud(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
+        }
+
+        // Minerales
+        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
+        List<MineralInfoDto> mineralesDto = loteMinerales.stream()
+                .map(lm -> new MineralInfoDto(
+                        lm.getMineralesId().getId(),
+                        lm.getMineralesId().getNombre(),
+                        lm.getMineralesId().getNomenclatura()
+                ))
+                .collect(Collectors.toList());
+        dto.setMinerales(mineralesDto);
+
+        // Información del destino (Ingenio o Comercializadora)
+        if (lote.getTipoOperacion().equals("procesamiento_planta")) {
+            LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote).orElse(null);
+            if (loteIngenio != null) {
+                IngenioMinero ingenio = loteIngenio.getIngenioMineroId();
+                dto.setDestinoId(ingenio.getId());
+                dto.setDestinoNombre(ingenio.getRazonSocial());
+                dto.setDestinoTipo("ingenio");
+                dto.setDestinoNIT(ingenio.getNit());
+                dto.setDestinoDireccion(ingenio.getDireccion());
+                dto.setDestinoDepartamento(ingenio.getDepartamento());
+                dto.setDestinoMunicipio(ingenio.getMunicipio());
+                dto.setDestinoTelefono(ingenio.getNumeroTelefonoMovil());
+
+                if (!ingenio.getAlmacenesIngenioList().isEmpty()) {
+                    dto.setDestinoAlmacenLatitud(ingenio.getAlmacenesIngenioList().getFirst().getLatitud());
+                    dto.setDestinoAlmacenLongitud(ingenio.getAlmacenesIngenioList().getFirst().getLongitud());
+                }
+                if (!ingenio.getBalanzasIngenioList().isEmpty()) {
+                    dto.setDestinoBalanzaLatitud(ingenio.getBalanzasIngenioList().getFirst().getLatitud());
+                    dto.setDestinoBalanzaLongitud(ingenio.getBalanzasIngenioList().getFirst().getLongitud());
+                }
+            }
+        } else {
+            LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
+            if (loteComercializadora != null) {
+                Comercializadora comercializadora = loteComercializadora.getComercializadoraId();
+                dto.setDestinoId(comercializadora.getId());
+                dto.setDestinoNombre(comercializadora.getRazonSocial());
+                dto.setDestinoTipo("comercializadora");
+                dto.setDestinoNIT(comercializadora.getNit());
+                dto.setDestinoDireccion(comercializadora.getDireccion());
+                dto.setDestinoDepartamento(comercializadora.getDepartamento());
+                dto.setDestinoMunicipio(comercializadora.getMunicipio());
+                dto.setDestinoTelefono(comercializadora.getNumeroTelefonoMovil());
+
+                if (!comercializadora.getAlmacenesList().isEmpty()) {
+                    dto.setDestinoAlmacenLatitud(comercializadora.getAlmacenesList().getFirst().getLatitud());
+                    dto.setDestinoAlmacenLongitud(comercializadora.getAlmacenesList().getFirst().getLongitud());
+                }
+                if (!comercializadora.getBalanzasList().isEmpty()) {
+                    dto.setDestinoBalanzaLatitud(comercializadora.getBalanzasList().getFirst().getLatitud());
+                    dto.setDestinoBalanzaLongitud(comercializadora.getBalanzasList().getFirst().getLongitud());
+                }
+            }
+        }
+
+        // Fechas
+        dto.setFechaCreacion(lote.getFechaCreacion());
+        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
+        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
+        dto.setFechaInicioTransporte(lote.getFechaInicioTransporte());
+        dto.setFechaFinTransporte(lote.getFechaFinTransporte());
+
+        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
+        dto.setPesoTotalReal(lote.getPesoTotalReal());
+        dto.setObservaciones(lote.getObservaciones());
+
+        // Información del socio
+        Socio socio = mina.getSocioId();
+        Persona persona = socio.getUsuariosId().getPersona();
+        dto.setSocioId(socio.getId());
+        dto.setSocioNombres(persona.getNombres());
+        dto.setSocioApellidos(persona.getPrimerApellido() + " " + (persona.getSegundoApellido() != null ? persona.getSegundoApellido() : ""));
+
+        // Asignaciones de camiones
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        dto.setCamioneAsignados(asignaciones.size());
+
+        List<AsignacionCamionSimpleDto> asignacionesDto = asignaciones.stream()
+                .map(a -> {
+                    Persona personaTransportista = a.getTransportistaId().getUsuariosId().getPersona();
+                    return new AsignacionCamionSimpleDto(
+                            a.getId(),
+                            a.getNumeroCamion(),
+                            a.getEstado(),
+                            a.getFechaAsignacion(),
+                            a.getTransportistaId().getId(),
+                            personaTransportista.getNombres() + " " + personaTransportista.getPrimerApellido(),
+                            a.getTransportistaId().getPlacaVehiculo(),
+                            personaTransportista.getNumeroCelular()
+                    );
+                })
+                .collect(Collectors.toList());
+        dto.setAsignaciones(asignacionesDto);
+
+        // Historial de cambios
+        List<AuditoriaLotes> auditorias = auditoriaLotesRepository.findByLoteIdOrderByFechaRegistroDesc(lote);
+        List<AuditoriaLoteDto> auditoriasDto = auditorias.stream()
+                .map(a -> new AuditoriaLoteDto(
+                        a.getId(),
+                        a.getEstadoAnterior(),
+                        a.getEstadoNuevo(),
+                        a.getAccion(),
+                        a.getDescripcion(),
+                        a.getObservaciones(),
+                        a.getFechaRegistro(),
+                        a.getTipoUsuario(),
+                        parseMetadataToStringMap(a.getMetadata())
+                ))
+                .collect(Collectors.toList());
+        dto.setHistorialCambios(auditoriasDto);
+
+        dto.setCreatedAt(lote.getFechaCreacion());
+        dto.setUpdatedAt(lote.getUpdatedAt());
+
+        return dto;
+    }
 
     private LotePendienteDto convertToPendienteDto(Lotes lote) {
         LotePendienteDto dto = new LotePendienteDto();
@@ -781,17 +762,15 @@ public class LotesCooperativaBl {
         return dto;
     }
 
-    private LoteDetalleDto convertToDetalleDto(Lotes lote) {
-        LoteDetalleDto dto = new LoteDetalleDto();
+    private LoteCooperativaResponseDto convertToCooperativaResponseDto(Lotes lote) {
+        LoteCooperativaResponseDto dto = new LoteCooperativaResponseDto();
 
-        // Información del lote
+        // Información básica del lote
         dto.setId(lote.getId());
         dto.setEstado(lote.getEstado());
-        dto.setFechaCreacion(lote.getFechaCreacion());
-        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
-        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
-        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
-        dto.setObservaciones(lote.getObservaciones());
+        dto.setCamionesSolicitados(lote.getCamionesSolicitados());
+        dto.setTipoOperacion(lote.getTipoOperacion());
+        dto.setTipoMineral(lote.getTipoMineral());
 
         // Información de la mina
         Minas mina = lote.getMinasId();
@@ -799,20 +778,29 @@ public class LotesCooperativaBl {
         dto.setMinaNombre(mina.getNombre());
         dto.setMinaLatitud(mina.getLatitud());
         dto.setMinaLongitud(mina.getLongitud());
-        dto.setSectorNombre(mina.getSectoresId().getNombre());
 
-        // Información del socio
+        // Información del sector
+        Sectores sector = mina.getSectoresId();
+        dto.setSectorId(sector.getId());
+        dto.setSectorNombre(sector.getNombre());
+        dto.setSectorColor(sector.getColor());
+
+        // Información del socio (dueño de la mina)
         Socio socio = mina.getSocioId();
         dto.setSocioId(socio.getId());
+        dto.setSocioEstado(socio.getEstado());
 
+        // Obtener datos de la persona del socio
         Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
         if (persona != null) {
-            dto.setSocioNombre(persona.getNombres() + " " + persona.getPrimerApellido());
+            dto.setSocioNombres(persona.getNombres());
+            dto.setSocioApellidos(persona.getPrimerApellido() +
+                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
             dto.setSocioCi(persona.getCi());
             dto.setSocioTelefono(persona.getNumeroCelular());
         }
 
-        // Información de minerales
+        // Obtener minerales del lote
         List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
         dto.setMinerales(
                 loteMinerales.stream()
@@ -824,13 +812,8 @@ public class LotesCooperativaBl {
                         .collect(Collectors.toList())
         );
 
-        // Información de operación
-        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
-        dto.setTipoOperacion(lote.getTipoOperacion());
-        dto.setTipoMineral(lote.getTipoMineral());
-
-        // Información del destino
-        if (lote.getTipoOperacion().equals("procesamiento_planta")) {
+        // Obtener información del destino (ingenio o comercializadora)
+        if ("procesamiento_planta".equals(lote.getTipoOperacion())) {
             LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote).orElse(null);
             if (loteIngenio != null) {
                 IngenioMinero ingenio = loteIngenio.getIngenioMineroId();
@@ -838,10 +821,8 @@ public class LotesCooperativaBl {
                 dto.setDestinoNombre(ingenio.getRazonSocial());
                 dto.setDestinoTipo("ingenio");
                 dto.setDestinoNit(ingenio.getNit());
-                dto.setDestinoContacto(ingenio.getCorreoContacto());
-                dto.setDestinoDireccion(ingenio.getDireccion());
             }
-        } else {
+        } else { // venta_directa
             LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
             if (loteComercializadora != null) {
                 Comercializadora comercializadora = loteComercializadora.getComercializadoraId();
@@ -849,10 +830,30 @@ public class LotesCooperativaBl {
                 dto.setDestinoNombre(comercializadora.getRazonSocial());
                 dto.setDestinoTipo("comercializadora");
                 dto.setDestinoNit(comercializadora.getNit());
-                dto.setDestinoContacto(comercializadora.getCorreoContacto());
-                dto.setDestinoDireccion(comercializadora.getDireccion());
             }
         }
+
+        // Fechas
+        dto.setFechaCreacion(lote.getFechaCreacion());
+        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
+        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
+        dto.setFechaInicioTransporte(lote.getFechaInicioTransporte());
+        dto.setFechaFinTransporte(lote.getFechaFinTransporte());
+
+        // Pesos
+        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
+        dto.setPesoTotalReal(lote.getPesoTotalReal());
+
+        // Cantidad de camiones asignados
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        dto.setCamioneAsignados(asignaciones.size());
+
+        // Observaciones
+        dto.setObservaciones(lote.getObservaciones());
+
+        // Metadata
+        dto.setCreatedAt(lote.getFechaCreacion());
+        dto.setUpdatedAt(lote.getUpdatedAt());
 
         return dto;
     }
@@ -883,199 +884,6 @@ public class LotesCooperativaBl {
         return dto;
     }
 
-    /**
-     * Obtener detalle completo de un lote (cualquier estado, no solo pendientes)
-     */
-    @Transactional(readOnly = true)
-    public LoteDetalleCooperativaDto getLoteDetalleCompleto(Integer loteId, Integer usuarioId) {
-        log.debug("Obteniendo detalle completo del lote ID: {} para cooperativa - Usuario ID: {}", loteId, usuarioId);
-
-        // Obtener cooperativa del usuario
-        Cooperativa cooperativa = obtenerCooperativaDelUsuario(usuarioId);
-
-        // Obtener lote
-        Lotes lote = lotesRepository.findById(loteId)
-                .orElseThrow(() -> new IllegalArgumentException("Lote no encontrado"));
-
-        // Verificar que el lote pertenece a la cooperativa
-        if (!perteneceACooperativa(lote, cooperativa)) {
-            throw new IllegalArgumentException("No tienes permiso para acceder a este lote");
-        }
-
-        return convertToDetalleCompletoDto(lote, cooperativa);
-    }
-
-    /**
-     * Convertir Lotes a LoteDetalleCooperativaDto con toda la información completa
-     */
-    private LoteDetalleCooperativaDto convertToDetalleCompletoDto(Lotes lote, Cooperativa cooperativa) {
-        LoteDetalleCooperativaDto dto = new LoteDetalleCooperativaDto();
-
-        // Información del lote
-        dto.setId(lote.getId());
-        dto.setEstado(lote.getEstado());
-        dto.setFechaCreacion(lote.getFechaCreacion());
-        dto.setFechaAprobacionCooperativa(lote.getFechaAprobacionCooperativa());
-        dto.setFechaAprobacionDestino(lote.getFechaAprobacionDestino());
-        dto.setFechaInicioTransporte(lote.getFechaInicioTransporte());
-        dto.setFechaFinTransporte(lote.getFechaFinTransporte());
-        dto.setPesoTotalEstimado(lote.getPesoTotalEstimado());
-        dto.setPesoTotalReal(lote.getPesoTotalReal());
-        dto.setObservaciones(lote.getObservaciones());
-
-        // Información de la mina
-        Minas mina = lote.getMinasId();
-        dto.setMinaId(mina.getId());
-        dto.setMinaNombre(mina.getNombre());
-        dto.setMinaFotoUrl(mina.getFotoUrl());
-        dto.setMinaLatitud(mina.getLatitud());
-        dto.setMinaLongitud(mina.getLongitud());
-
-        // Información del sector
-        Sectores sector = mina.getSectoresId();
-        dto.setSectorId(sector.getId());
-        dto.setSectorNombre(sector.getNombre());
-        dto.setSectorColor(sector.getColor());
-
-        // Información del socio (propietario de la mina)
-        Socio socio = mina.getSocioId();
-        dto.setSocioId(socio.getId());
-        dto.setSocioEstado(socio.getEstado());
-
-        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
-        if (persona != null) {
-            dto.setSocioNombres(persona.getNombres());
-            dto.setSocioApellidos(persona.getPrimerApellido() +
-                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
-            dto.setSocioCi(persona.getCi());
-            dto.setSocioTelefono(persona.getNumeroCelular());
-        }
-
-        // Información de minerales
-        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(lote);
-        dto.setMinerales(
-                loteMinerales.stream()
-                        .map(lm -> new MineralInfoDto(
-                                lm.getMineralesId().getId(),
-                                lm.getMineralesId().getNombre(),
-                                lm.getMineralesId().getNomenclatura()
-                        ))
-                        .collect(Collectors.toList())
-        );
-
-        // Información de operación
-        dto.setCamionlesSolicitados(lote.getCamionesSolicitados());
-        dto.setTipoOperacion(lote.getTipoOperacion());
-        dto.setTipoMineral(lote.getTipoMineral());
-
-        // Información del destino (ingenio o comercializadora)
-        if ("procesamiento_planta".equals(lote.getTipoOperacion())) {
-            LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote).orElse(null);
-            if (loteIngenio != null) {
-                IngenioMinero ingenio = loteIngenio.getIngenioMineroId();
-                dto.setDestinoId(ingenio.getId());
-                dto.setDestinoNombre(ingenio.getRazonSocial());
-                dto.setDestinoTipo("ingenio");
-                dto.setDestinoNIT(ingenio.getNit());
-                dto.setDestinoContacto(ingenio.getCorreoContacto());
-                dto.setDestinoDireccion(ingenio.getDireccion());
-                dto.setDestinoDepartamento(ingenio.getDepartamento());
-                dto.setDestinoMunicipio(ingenio.getMunicipio());
-                dto.setDestinoTelefono(ingenio.getNumeroTelefonoMovil());
-
-                // Coordenadas del almacén e ingenio
-                if (!ingenio.getAlmacenesIngenioList().isEmpty()) {
-                    dto.setDestinoAlmacenLatitud(ingenio.getAlmacenesIngenioList().get(0).getLatitud());
-                    dto.setDestinoAlmacenLongitud(ingenio.getAlmacenesIngenioList().get(0).getLongitud());
-                }
-                if (!ingenio.getBalanzasIngenioList().isEmpty()) {
-                    dto.setDestinoBalanzaLatitud(ingenio.getBalanzasIngenioList().get(0).getLatitud());
-                    dto.setDestinoBalanzaLongitud(ingenio.getBalanzasIngenioList().get(0).getLongitud());
-                }
-            }
-        } else { // venta_directa
-            LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote).orElse(null);
-            if (loteComercializadora != null) {
-                Comercializadora comercializadora = loteComercializadora.getComercializadoraId();
-                dto.setDestinoId(comercializadora.getId());
-                dto.setDestinoNombre(comercializadora.getRazonSocial());
-                dto.setDestinoTipo("comercializadora");
-                dto.setDestinoNIT(comercializadora.getNit());
-                dto.setDestinoContacto(comercializadora.getCorreoContacto());
-                dto.setDestinoDireccion(comercializadora.getDireccion());
-                dto.setDestinoDepartamento(comercializadora.getDepartamento());
-                dto.setDestinoMunicipio(comercializadora.getMunicipio());
-                dto.setDestinoTelefono(comercializadora.getNumeroTelefonoMovil());
-
-                // Coordenadas del almacén y comercializadora
-                if (!comercializadora.getAlmacenesList().isEmpty()) {
-                    dto.setDestinoAlmacenLatitud(comercializadora.getAlmacenesList().getFirst().getLatitud());
-                    dto.setDestinoAlmacenLongitud(comercializadora.getAlmacenesList().getFirst().getLongitud());
-                }
-                if (!comercializadora.getBalanzasList().isEmpty()) {
-                    dto.setDestinoBalanzaLatitud(comercializadora.getBalanzasList().getFirst().getLatitud());
-                    dto.setDestinoBalanzaLongitud(comercializadora.getBalanzasList().getFirst().getLongitud());
-                }
-            }
-        }
-
-        // Información de la cooperativa (balanza)
-        if (!cooperativa.getBalanzaCooperativaList().isEmpty()) {
-            dto.setCooperativaBalanzaLatitud(cooperativa.getBalanzaCooperativaList().getFirst().getLatitud());
-            dto.setCooperativaBalanzaLongitud(cooperativa.getBalanzaCooperativaList().getFirst().getLongitud());
-        }
-
-        // Información de transporte (camiones asignados)
-        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
-        dto.setCamioneAsignados(asignaciones.size());
-
-        List<AsignacionCamionSimpleDto> asignacionesDto = asignaciones.stream()
-                .map(a -> {
-                    Persona personaTransportista = personaRepository.findByUsuariosId(a.getTransportistaId().getUsuariosId()).orElse(null);
-                    String nombreTransportista = personaTransportista != null
-                            ? personaTransportista.getNombres() + " " + personaTransportista.getPrimerApellido()
-                            : "Transportista #" + a.getTransportistaId().getId();
-                    String telefonoTransportista = personaTransportista != null
-                            ? personaTransportista.getNumeroCelular()
-                            : null;
-
-                    return new AsignacionCamionSimpleDto(
-                            a.getId(),
-                            a.getNumeroCamion(),
-                            a.getEstado(),
-                            a.getFechaAsignacion(),
-                            a.getTransportistaId().getId(),
-                            nombreTransportista,
-                            a.getTransportistaId().getPlacaVehiculo(),
-                            telefonoTransportista
-                    );
-                })
-                .collect(Collectors.toList());
-        dto.setAsignaciones(asignacionesDto);
-
-        // Historial de cambios (auditoría)
-        List<AuditoriaLotes> auditorias = auditoriaLotesRepository.findByLoteIdOrderByFechaRegistroDesc(lote);
-        List<AuditoriaLoteDto> auditoriasDto = auditorias.stream()
-                .map(a -> new AuditoriaLoteDto(
-                        a.getId(),
-                        a.getEstadoAnterior(),
-                        a.getEstadoNuevo(),
-                        a.getAccion(),
-                        a.getDescripcion(),
-                        a.getObservaciones(),
-                        a.getFechaRegistro(),
-                        a.getTipoUsuario(),
-                        parseMetadataToStringMap(a.getMetadata())
-                ))
-                .collect(Collectors.toList());
-        dto.setHistorialCambios(auditoriasDto);
-
-        // Metadata
-        dto.setCreatedAt(lote.getFechaCreacion());
-        dto.setUpdatedAt(lote.getUpdatedAt());
-
-        return dto;
-    }
     private Map<String, String> parseMetadataToStringMap(String json) {
         if (json == null || json.isBlank()) return Map.of();
 

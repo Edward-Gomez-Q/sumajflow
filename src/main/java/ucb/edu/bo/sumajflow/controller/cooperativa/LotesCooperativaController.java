@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.cooperativa.LotesCooperativaBl;
 import ucb.edu.bo.sumajflow.dto.cooperativa.*;
+import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.utils.HttpUtils;
 import ucb.edu.bo.sumajflow.utils.JwtUtil;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -55,7 +56,7 @@ public class LotesCooperativaController {
     }
 
     /**
-     * Obtener detalle completo de un lote
+     * Obtener detalle completo de un lote - AHORA RETORNA LoteDetalleDto
      * GET /cooperativa/lotes/pendientes/{id}/detalle
      */
     @GetMapping("/pendientes/{id}/detalle")
@@ -114,18 +115,8 @@ public class LotesCooperativaController {
     }
 
     /**
-     * Aprobar lote y asignar transportistas
+     * Aprobar lote y asignar transportistas - AHORA RETORNA LoteDetalleDto
      * PUT /cooperativa/lotes/{id}/aprobar
-     *
-     * Body ejemplo:
-     * {
-     *   "asignaciones": [
-     *     { "transportistaId": 1, "numeroCamion": 1 },
-     *     { "transportistaId": 2, "numeroCamion": 2 }
-     *   ],
-     *   "fechaAsignacion": "2025-01-15",
-     *   "observaciones": "Aprobado para iniciar la próxima semana"
-     * }
      */
     @PutMapping("/{id}/aprobar")
     public ResponseEntity<Map<String, Object>> aprobarLote(
@@ -174,11 +165,6 @@ public class LotesCooperativaController {
     /**
      * Rechazar lote
      * PUT /cooperativa/lotes/{id}/rechazar
-     *
-     * Body ejemplo:
-     * {
-     *   "motivoRechazo": "No hay suficientes transportistas disponibles"
-     * }
      */
     @PutMapping("/{id}/rechazar")
     public ResponseEntity<Map<String, Object>> rechazarLote(
@@ -222,6 +208,7 @@ public class LotesCooperativaController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+
     /**
      * Obtener todos los lotes de la cooperativa con filtros y paginación
      * GET /cooperativa/lotes
@@ -281,8 +268,9 @@ public class LotesCooperativaController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+
     /**
-     * Obtener detalle completo de un lote (cualquier estado)
+     * Obtener detalle completo de un lote (cualquier estado) - AHORA RETORNA LoteDetalleDto
      * GET /cooperativa/lotes/{id}/detalle
      */
     @GetMapping("/{id}/detalle")
@@ -294,7 +282,7 @@ public class LotesCooperativaController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            LoteDetalleCooperativaDto lote = lotesCooperativaBl.getLoteDetalleCompleto(id, usuarioId);
+            LoteDetalleDto lote = lotesCooperativaBl.getLoteDetalleCompleto(id, usuarioId);
 
             response.put("success", true);
             response.put("data", lote);
