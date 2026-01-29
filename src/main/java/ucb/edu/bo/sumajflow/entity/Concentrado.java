@@ -58,6 +58,14 @@ public class Concentrado implements Serializable {
     @Column(name = "mineral_principal", length = 50)
     private String mineralPrincipal;
 
+    @Size(max = 200)
+    @Column(name = "minerales_secundarios", length = 200)
+    private String mineralesSecundarios;
+
+    @Column(name = "lote_origen_multiple")
+    @Builder.Default
+    private Boolean loteOrigenMultiple = false;
+
     @Size(max = 50)
     @Column(name = "estado", length = 50)
     private String estado;
@@ -148,6 +156,9 @@ public class Concentrado implements Serializable {
         }
         if (fechaInicio == null) {
             fechaInicio = LocalDateTime.now();
+        }
+        if (loteOrigenMultiple == null) {
+            loteOrigenMultiple = false;
         }
     }
 }

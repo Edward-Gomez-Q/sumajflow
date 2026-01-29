@@ -20,12 +20,6 @@ public class ConcentradoCreateDto {
     @DecimalMin(value = "0.01", message = "El peso debe ser mayor a 0")
     private BigDecimal pesoInicial;
 
-    @Size(max = 50, message = "El mineral principal no puede exceder 50 caracteres")
-    private String mineralPrincipal;
-
-    @Min(value = 1, message = "El número de sacos debe ser mayor a 0")
-    private Integer numeroSacos;
-
     @Size(max = 500, message = "Las observaciones no pueden exceder 500 caracteres")
     private String observacionesIniciales;
 }

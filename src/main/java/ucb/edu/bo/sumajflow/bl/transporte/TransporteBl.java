@@ -15,6 +15,7 @@ import ucb.edu.bo.sumajflow.dto.tracking.LoteDetalleViajeDto;
 import ucb.edu.bo.sumajflow.dto.transporte.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -666,8 +667,14 @@ public class TransporteBl {
 
             if ("En Transporte".equals(nuevoEstadoLote) && lote.getFechaInicioTransporte() == null) {
                 lote.setFechaInicioTransporte(LocalDateTime.now());
-            } else if ("En Transporte Completo".equals(nuevoEstadoLote)) {
+            } else if ("Transporte completo".equals(nuevoEstadoLote)) {
                 lote.setFechaFinTransporte(LocalDateTime.now());
+
+                // Calcular y actualizar peso real total
+                BigDecimal pesoRealTotal = calcularPesoRealTotal(asignacionesActivas);
+                lote.setPesoTotalReal(pesoRealTotal);
+
+                log.info("Peso real total del lote {}: {} kg", lote.getId(), pesoRealTotal);
             }
 
             lotesRepository.save(lote);
@@ -675,6 +682,50 @@ public class TransporteBl {
         }
     }
 
+    /**
+     * Calcular peso real total sumando los pesos netos de destino de todas las asignaciones
+     */
+    private BigDecimal calcularPesoRealTotal(List<AsignacionCamion> asignaciones) {
+        return asignaciones.stream()
+                .map(this::extraerPesoNetoDestino)
+                .filter(peso -> peso != null && peso.compareTo(BigDecimal.ZERO) > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Extraer peso_neto_kg del pesaje_destino desde el JSON de observaciones
+     */
+    private BigDecimal extraerPesoNetoDestino(AsignacionCamion asignacion) {
+        try {
+            if (asignacion.getObservaciones() == null || asignacion.getObservaciones().isEmpty()) {
+                return BigDecimal.ZERO;
+            }
+
+            // Parsear el JSON
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(asignacion.getObservaciones());
+
+            // Navegar a pesaje_destino.peso_neto_kg
+            JsonNode pesajeDestino = rootNode.path("pesaje_destino");
+            if (pesajeDestino.isMissingNode()) {
+                log.warn("No se encontró pesaje_destino para asignación {}", asignacion.getId());
+                return BigDecimal.ZERO;
+            }
+
+            JsonNode pesoNetoNode = pesajeDestino.path("peso_neto_kg");
+            if (pesoNetoNode.isMissingNode() || pesoNetoNode.isNull()) {
+                log.warn("No se encontró peso_neto_kg en pesaje_destino para asignación {}", asignacion.getId());
+                return BigDecimal.ZERO;
+            }
+
+            return BigDecimal.valueOf(pesoNetoNode.asDouble());
+
+        } catch (Exception e) {
+            log.error("Error al extraer peso neto de destino para asignación {}: {}",
+                    asignacion.getId(), e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
     /**
      * Registrar auditoría
      */

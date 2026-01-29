@@ -46,8 +46,8 @@ public interface ConcentradoRepository extends JpaRepository<Concentrado, Intege
           "WHERE c.ingenioMineroId = :ingenio " +
           "AND (:estado IS NULL OR c.estado = :estado) " +
           "AND (:mineralPrincipal IS NULL OR c.mineralPrincipal = :mineralPrincipal) " +
-          "AND (:fechaDesde IS NULL OR c.createdAt >= :fechaDesde) " +
-          "AND (:fechaHasta IS NULL OR c.createdAt <= :fechaHasta)")
+          "AND (CAST(:fechaDesde AS timestamp) IS NULL OR c.createdAt >= :fechaDesde) " +
+          "AND (CAST(:fechaHasta AS timestamp) IS NULL OR c.createdAt <= :fechaHasta)")
   Page<Concentrado> findConcentradosConFiltros(
           @Param("ingenio") IngenioMinero ingenio,
           @Param("estado") String estado,

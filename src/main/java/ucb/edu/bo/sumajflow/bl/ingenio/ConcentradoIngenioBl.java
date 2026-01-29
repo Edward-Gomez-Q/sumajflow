@@ -58,6 +58,8 @@ public class ConcentradoIngenioBl {
     private final AuditoriaBl auditoriaBl;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final ConcentradoMineralAnalyzer mineralAnalyzer;
+
 
     // Constantes de estados
     private static final String ESTADO_CREADO = "creado";
@@ -97,6 +99,7 @@ public class ConcentradoIngenioBl {
 
         return concentrados.map(this::convertirAResponseDto);
     }
+
 
     /**
      * Obtener detalle de un concentrado específico
@@ -142,15 +145,18 @@ public class ConcentradoIngenioBl {
     // ==================== CREAR CONCENTRADO ====================
 
     /**
-     * Crear un nuevo concentrado a partir de lotes aprobados
+     * Crear concentrado(s) a partir de lotes aprobados
+     * ACTUALIZADO: Crea múltiples concentrados si el lote tiene Zn+Pb
+     *
+     * @return Lista de concentrados creados (puede ser 1 o 2)
      */
     @Transactional
-    public ConcentradoResponseDto crearConcentrado(
+    public List<ConcentradoResponseDto> crearConcentrado(
             ConcentradoCreateDto createDto,
             Integer usuarioId,
             String ipOrigen
     ) {
-        log.info("Creando concentrado - Usuario ID: {}", usuarioId);
+        log.info("Creando concentrado(s) - Usuario ID: {}", usuarioId);
 
         // 1. Validar ingenio
         IngenioMinero ingenio = obtenerIngenioDelUsuario(usuarioId);
@@ -158,37 +164,119 @@ public class ConcentradoIngenioBl {
         // 2. Validar y obtener lotes
         List<Lotes> lotes = validarYObtenerLotes(createDto.getLotesIds(), ingenio);
 
-        // 3. Determinar socio propietario (del primer lote)
-        Socio socioPropietario = lotes.get(0).getMinasId().getSocioId();
+        validarPesoMinimoPlanta(lotes, ingenio);
 
-        // 4. Calcular peso inicial
-        BigDecimal pesoCalculado = calcularPesoTotal(lotes);
+        // 3. Determinar socio propietario
+        Socio socioPropietario = lotes.getFirst().getMinasId().getSocioId();
 
-        // 5. Generar código único
-        String codigoConcentrado = generarCodigoConcentrado(ingenio);
+        // 4. Obtener minerales del primer lote (asumimos que todos los lotes tienen los mismos minerales)
+        Lotes primerLote = lotes.getFirst();
+        List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(primerLote);
 
-        // 6. Determinar mineral principal
-        String mineralPrincipal = determinarMineralPrincipal(lotes);
+        if (loteMinerales.isEmpty()) {
+            throw new IllegalArgumentException("El lote no tiene minerales asociados");
+        }
 
-        // 7. Crear observaciones iniciales
+        // 5. Determinar qué concentrados crear según minerales
+        ConcentradoMineralAnalyzer.ConcentradosPlanificados planificacion =
+                mineralAnalyzer.determinarConcentrados(loteMinerales);
+
+        log.info("Se crearán {} concentrado(s) para el lote", planificacion.getConcentrados().size());
+
+        // 6. Crear cada concentrado planificado
+        List<Concentrado> concentradosCreados = new ArrayList<>();
+
+        for (int i = 0; i < planificacion.getConcentrados().size(); i++) {
+            ConcentradoMineralAnalyzer.ConcentradoPlanificado planificado =
+                    planificacion.getConcentrados().get(i);
+
+            Concentrado concentrado = crearConcentradoIndividual(
+                    createDto,
+                    lotes,
+                    ingenio,
+                    socioPropietario,
+                    planificado,
+                    planificacion.getEsMultiple(),
+                    i + 1,
+                    usuarioId,
+                    ipOrigen
+            );
+
+            concentradosCreados.add(concentrado);
+        }
+        // Registrar el estado de los lotes de Transporte completo a En planta
+        lotes.forEach(lote -> {
+            lote.setEstado("En planta");
+            lotesRepository.save(lote);
+        });
+
+
+        // 7. Auditoría y notificación
+        registrarAuditoriaCreacionMultiple(concentradosCreados, lotes, usuarioId, ipOrigen);
+        notificarCreacionMultiple(concentradosCreados, ingenio, socioPropietario);
+
+        // 8. Convertir a DTOs
+        List<ConcentradoResponseDto> response = concentradosCreados.stream()
+                .map(this::convertirAResponseDto)
+                .collect(Collectors.toList());
+
+        log.info("Concentrado(s) creado(s) exitosamente - Total: {}", concentradosCreados.size());
+
+        return response;
+    }
+
+    /**
+     * Crea un concentrado individual según la planificación
+     */
+    private Concentrado crearConcentradoIndividual(
+            ConcentradoCreateDto createDto,
+            List<Lotes> lotes,
+            IngenioMinero ingenio,
+            Socio socioPropietario,
+            ConcentradoMineralAnalyzer.ConcentradoPlanificado planificado,
+            Boolean esMultiple,
+            int sufijo,
+            Integer usuarioId,
+            String ipOrigen
+    ) {
+        // 1. Generar código único
+        String codigoConcentrado = generarCodigoConcentrado(ingenio, planificado.getMineralPrincipal(), sufijo);
+
+        // 2. Calcular peso según porcentaje
+        BigDecimal pesoConcentrado = createDto.getPesoInicial()
+                .multiply(BigDecimal.valueOf(planificado.getPorcentajePeso()))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        // 3. Construir minerales secundarios
+        String mineralesSecundarios = mineralAnalyzer.construirMineralesSecundarios(planificado);
+
+        // 4. Crear observaciones iniciales
         List<Map<String, Object>> historial = new ArrayList<>();
         Map<String, Object> registroInicial = crearRegistroHistorial(
                 ESTADO_CREADO,
-                "Concentrado creado",
+                "Concentrado creado - Mineral principal: " + planificado.getMineralPrincipal(),
                 createDto.getObservacionesIniciales(),
                 usuarioId,
                 ipOrigen
         );
+
+        // Agregar info de revisión si es necesario
+        if (Boolean.TRUE.equals(planificado.getRequiereRevision())) {
+            registroInicial.put("requiere_revision", true);
+            registroInicial.put("motivo_revision", planificado.getObservacionRevision());
+        }
+
         historial.add(registroInicial);
 
-        // 8. Crear entidad Concentrado
+        // 5. Crear entidad Concentrado
         Concentrado concentrado = Concentrado.builder()
                 .codigoConcentrado(codigoConcentrado)
                 .ingenioMineroId(ingenio)
                 .socioPropietarioId(socioPropietario)
-                .pesoInicial(createDto.getPesoInicial())
-                .mineralPrincipal(mineralPrincipal != null ? mineralPrincipal : createDto.getMineralPrincipal())
-                .numeroSacos(createDto.getNumeroSacos())
+                .pesoInicial(pesoConcentrado)
+                .mineralPrincipal(planificado.getMineralPrincipal())
+                .mineralesSecundarios(mineralesSecundarios)
+                .loteOrigenMultiple(esMultiple)
                 .estado(ESTADO_CREADO)
                 .observaciones(convertirHistorialAJson(historial))
                 .fechaInicio(LocalDateTime.now())
@@ -196,30 +284,53 @@ public class ConcentradoIngenioBl {
 
         concentrado = concentradoRepository.save(concentrado);
 
-        // 9. Crear relaciones con lotes
-        crearRelacionesConLotes(concentrado, lotes);
+        // 6. Crear relaciones con lotes
+        crearRelacionesConLotes(concentrado, lotes, planificado.getPorcentajePeso());
 
-        // 10. Inicializar Kanban de procesos
+        // 7. Inicializar Kanban de procesos
         inicializarProcesosPlanta(concentrado, ingenio);
 
-        // 11. Transicionar a "en_camino_a_planta"
+        // 8. Transicionar a "en_camino_a_planta"
         transicionarEstado(
                 concentrado,
                 ESTADO_EN_CAMINO_PLANTA,
-                "Concentrado en camino a planta para iniciar procesamiento",
+                "Concentrado de " + planificado.getMineralPrincipal() + " en camino a planta",
                 null,
                 usuarioId,
                 ipOrigen
         );
 
-        // 12. Auditoría y notificación
-        registrarAuditoriaCreacion(concentrado, lotes, usuarioId, ipOrigen);
-        notificarCreacion(concentrado, ingenio, socioPropietario);
+        // 9. Publicar evento WebSocket
         publicarEventoWebSocket(concentrado, "concentrado_creado");
 
-        log.info("Concentrado creado exitosamente - ID: {}", concentrado.getId());
+        return concentrado;
+    }
 
-        return convertirAResponseDto(concentrado);
+
+    /**
+     * Validar que el peso total de los lotes cumple con el cupo mínimo de la planta
+     */
+    private void validarPesoMinimoPlanta(List<Lotes> lotes, IngenioMinero ingenio) {
+        // 1. Obtener la planta del ingenio
+        Planta planta = plantaRepository.findByIngenioMineroId(ingenio)
+                .orElseThrow(() -> new IllegalArgumentException("El ingenio no tiene planta configurada"));
+
+        // 2. Calcular peso total de los lotes
+        BigDecimal pesoTotal = calcularPesoTotal(lotes);
+
+        // 3. Validar contra cupo mínimo
+        if (pesoTotal.compareTo(planta.getCupoMinimo()) < 0) {
+            throw new IllegalArgumentException(
+                    String.format("El peso total de los lotes (%.2f kg) no cumple con el cupo mínimo de la planta (%.2f kg). " +
+                                    "Necesitas %.2f kg adicionales.",
+                            pesoTotal,
+                            planta.getCupoMinimo(),
+                            planta.getCupoMinimo().subtract(pesoTotal))
+            );
+        }
+
+        log.info("Validación de peso exitosa - Peso total: {} kg, Cupo mínimo: {} kg",
+                pesoTotal, planta.getCupoMinimo());
     }
 
     // ==================== KANBAN DE PROCESOS ====================
@@ -346,6 +457,248 @@ public class ConcentradoIngenioBl {
         publicarEventoKanban(concentrado, proceso, estadoAnterior);
 
         return obtenerProcesos(concentradoId, usuarioId);
+    }
+
+    /**
+     * Mover concentrado directamente a un proceso específico
+     * Completa automáticamente los procesos intermedios si es necesario
+     *
+     * @param concentradoId ID del concentrado
+     * @param moverDto Datos del movimiento (proceso destino, observaciones)
+     * @param usuarioId Usuario que realiza la acción
+     * @param ipOrigen IP del cliente
+     * @return Estado actualizado del Kanban
+     */
+    @Transactional
+    public ProcesosConcentradoResponseDto moverAProceso(
+            Integer concentradoId,
+            ProcesoMoverDto moverDto,
+            Integer usuarioId,
+            String ipOrigen
+    ) {
+        log.info("Moviendo concentrado {} al proceso {}", concentradoId, moverDto.getProcesoDestinoId());
+
+        // 1. Validaciones iniciales
+        IngenioMinero ingenio = obtenerIngenioDelUsuario(usuarioId);
+        Concentrado concentrado = obtenerConcentradoConPermisos(concentradoId, ingenio);
+
+        LoteProcesoPlanta procesoDestino = loteProcesoPlantaRepository.findById(moverDto.getProcesoDestinoId())
+                .orElseThrow(() -> new IllegalArgumentException("Proceso destino no encontrado"));
+
+        if (!procesoDestino.getConcentradoId().getId().equals(concentradoId)) {
+            throw new IllegalArgumentException("El proceso destino no pertenece a este concentrado");
+        }
+
+        // 2. Obtener todos los procesos ordenados
+        List<LoteProcesoPlanta> todosProcesos = loteProcesoPlantaRepository
+                .findByConcentradoIdOrderByOrdenAsc(concentrado);
+
+        // 3. Determinar proceso actual (primer pendiente o en_proceso)
+        LoteProcesoPlanta procesoActual = todosProcesos.stream()
+                .filter(p -> "pendiente".equals(p.getEstado()) || "en_proceso".equals(p.getEstado()))
+                .findFirst()
+                .orElse(null);
+
+        if (procesoActual == null) {
+            throw new IllegalArgumentException("Todos los procesos ya están completados");
+        }
+
+        // 4. Validar que no se intente retroceder
+        if (procesoDestino.getOrden() < procesoActual.getOrden()) {
+            throw new IllegalArgumentException(
+                    "No puedes retroceder a un proceso anterior. Proceso actual: " + procesoActual.getProcesoId().getNombre()
+            );
+        }
+
+        // 5. Si es el mismo proceso, solo cambiar su estado
+        if (procesoDestino.getId().equals(procesoActual.getId())) {
+            return avanzarProcesoActual(concentrado, procesoActual, moverDto.getObservaciones(), usuarioId, ipOrigen);
+        }
+
+        // 6. Si salta procesos, completar los intermedios automáticamente
+        if (procesoDestino.getOrden() > procesoActual.getOrden()) {
+            completarProcesosIntermedios(
+                    concentrado,
+                    todosProcesos,
+                    procesoActual.getOrden(),
+                    procesoDestino.getOrden(),
+                    moverDto.getObservaciones(),
+                    usuarioId,
+                    ipOrigen
+            );
+        }
+
+        // 7. Actualizar estado del concentrado si es el primer proceso
+        if (procesoActual.getOrden() == 1 && "en_camino_a_planta".equals(concentrado.getEstado())) {
+            transicionarEstado(
+                    concentrado,
+                    "en_proceso",
+                    "Inicio del procesamiento en planta",
+                    moverDto.getObservaciones(),
+                    usuarioId,
+                    ipOrigen
+            );
+        }
+
+        // 8. Si completó todos, cambiar estado del concentrado
+        if (loteProcesoPlantaRepository.todosCompletados(concentrado)) {
+            transicionarEstado(
+                    concentrado,
+                    "esperando_reporte_quimico",
+                    "Todos los procesos completados. Esperando reporte químico.",
+                    null,
+                    usuarioId,
+                    ipOrigen
+            );
+
+            notificarProcesamientoCompleto(concentrado);
+            publicarEventoWebSocket(concentrado, "procesamiento_completo");
+        }
+
+        // 9. Publicar evento WebSocket
+        publicarEventoWebSocket(concentrado, "kanban_actualizado");
+
+        // 10. Retornar estado actualizado
+        return obtenerProcesos(concentradoId, usuarioId);
+    }
+
+    /**
+     * Avanzar el proceso actual (iniciar si está pendiente, completar si está en_proceso)
+     */
+    private ProcesosConcentradoResponseDto avanzarProcesoActual(
+            Concentrado concentrado,
+            LoteProcesoPlanta proceso,
+            String observaciones,
+            Integer usuarioId,
+            String ipOrigen
+    ) {
+        String estadoAnterior = proceso.getEstado();
+
+        if ("pendiente".equals(estadoAnterior)) {
+            // Iniciar proceso
+            proceso.setEstado("en_proceso");
+            proceso.setFechaInicio(LocalDateTime.now());
+            if (observaciones != null) {
+                proceso.setObservaciones(observaciones);
+            }
+            loteProcesoPlantaRepository.save(proceso);
+
+            registrarAuditoriaKanban(concentrado, proceso, "INICIAR_PROCESO", "Proceso iniciado", usuarioId, ipOrigen);
+
+        } else if ("en_proceso".equals(estadoAnterior)) {
+            // Completar proceso
+            proceso.setEstado("completado");
+            proceso.setFechaFin(LocalDateTime.now());
+            if (observaciones != null) {
+                String obsActuales = proceso.getObservaciones();
+                proceso.setObservaciones(
+                        obsActuales != null ? obsActuales + " | " + observaciones : observaciones
+                );
+            }
+            loteProcesoPlantaRepository.save(proceso);
+
+            registrarAuditoriaKanban(concentrado, proceso, "COMPLETAR_PROCESO", "Proceso completado", usuarioId, ipOrigen);
+        }
+
+        publicarEventoKanban(concentrado, proceso, estadoAnterior);
+
+        return obtenerProcesos(concentrado.getId(), usuarioId);
+    }
+
+    /**
+     * Completar automáticamente procesos intermedios cuando se salta al destino
+     */
+    private void completarProcesosIntermedios(
+            Concentrado concentrado,
+            List<LoteProcesoPlanta> todosProcesos,
+            Integer ordenInicial,
+            Integer ordenFinal,
+            String observaciones,
+            Integer usuarioId,
+            String ipOrigen
+    ) {
+        log.info("Completando procesos intermedios desde orden {} hasta {}", ordenInicial, ordenFinal);
+
+        // Filtrar procesos en el rango (desde ordenInicial hasta ordenFinal-1)
+        List<LoteProcesoPlanta> procesosACompletar = todosProcesos.stream()
+                .filter(p -> p.getOrden() >= ordenInicial && p.getOrden() < ordenFinal)
+                .sorted((a, b) -> a.getOrden().compareTo(b.getOrden()))
+                .collect(Collectors.toList());
+
+        for (LoteProcesoPlanta proceso : procesosACompletar) {
+            String estadoAnterior = proceso.getEstado();
+
+            // Si está pendiente, primero iniciarlo
+            if ("pendiente".equals(estadoAnterior)) {
+                proceso.setEstado("en_proceso");
+                proceso.setFechaInicio(LocalDateTime.now());
+                proceso.setObservaciones("Auto-iniciado (movimiento rápido Kanban)");
+                loteProcesoPlantaRepository.save(proceso);
+
+                registrarAuditoriaKanban(
+                        concentrado,
+                        proceso,
+                        "AUTO_INICIAR_PROCESO",
+                        "Proceso auto-iniciado por salto en Kanban",
+                        usuarioId,
+                        ipOrigen
+                );
+            }
+
+            // Luego completarlo
+            proceso.setEstado("completado");
+            proceso.setFechaFin(LocalDateTime.now());
+
+            String obs = proceso.getObservaciones() != null
+                    ? proceso.getObservaciones() + " | Completado automáticamente"
+                    : "Completado automáticamente (movimiento rápido Kanban)";
+
+            if (observaciones != null && !observaciones.isBlank()) {
+                obs += " - " + observaciones;
+            }
+
+            proceso.setObservaciones(obs);
+            loteProcesoPlantaRepository.save(proceso);
+
+            registrarAuditoriaKanban(
+                    concentrado,
+                    proceso,
+                    "AUTO_COMPLETAR_PROCESO",
+                    "Proceso auto-completado por salto en Kanban",
+                    usuarioId,
+                    ipOrigen
+            );
+
+            publicarEventoKanban(concentrado, proceso, estadoAnterior);
+
+            log.info("Proceso {} auto-completado (orden {})", proceso.getProcesoId().getNombre(), proceso.getOrden());
+        }
+
+        // Iniciar el proceso destino si está pendiente
+        LoteProcesoPlanta procesoDestino = todosProcesos.stream()
+                .filter(p -> p.getOrden().equals(ordenFinal))
+                .findFirst()
+                .orElse(null);
+
+        if (procesoDestino != null && "pendiente".equals(procesoDestino.getEstado())) {
+            procesoDestino.setEstado("en_proceso");
+            procesoDestino.setFechaInicio(LocalDateTime.now());
+            if (observaciones != null) {
+                procesoDestino.setObservaciones(observaciones);
+            }
+            loteProcesoPlantaRepository.save(procesoDestino);
+
+            registrarAuditoriaKanban(
+                    concentrado,
+                    procesoDestino,
+                    "INICIAR_PROCESO",
+                    "Proceso iniciado tras completar intermedios",
+                    usuarioId,
+                    ipOrigen
+            );
+
+            publicarEventoKanban(concentrado, procesoDestino, "pendiente");
+        }
     }
 
     // ==================== REPORTE QUÍMICO ====================
@@ -677,7 +1030,7 @@ public class ConcentradoIngenioBl {
             lotes.add(lote);
         }
 
-        Socio primerSocio = lotes.get(0).getMinasId().getSocioId();
+        Socio primerSocio = lotes.getFirst().getMinasId().getSocioId();
         boolean todosDelMismoSocio = lotes.stream()
                 .allMatch(l -> l.getMinasId().getSocioId().getId().equals(primerSocio.getId()));
 
@@ -706,25 +1059,39 @@ public class ConcentradoIngenioBl {
                 .orElse(null);
     }
 
-    private String generarCodigoConcentrado(IngenioMinero ingenio) {
+    /**
+     * Genera código único para concentrado
+     * Formato: CONC-ING{id}-{mineral}-{timestamp}-{random}
+     */
+    private String generarCodigoConcentrado(IngenioMinero ingenio, String mineralPrincipal, int sufijo) {
         String timestamp = String.valueOf(System.currentTimeMillis()).substring(7);
         String random = String.format("%03d", new Random().nextInt(1000));
-        String codigo = String.format("CONC-ING%d-%s-%s", ingenio.getId(), timestamp, random);
+        String codigo = String.format("CONC-ING%d-%s-%s-%s-%d",
+                ingenio.getId(), mineralPrincipal, timestamp, random, sufijo);
 
         while (concentradoRepository.existsByCodigo(codigo)) {
             random = String.format("%03d", new Random().nextInt(1000));
-            codigo = String.format("CONC-ING%d-%s-%s", ingenio.getId(), timestamp, random);
+            codigo = String.format("CONC-ING%d-%s-%s-%s-%d",
+                    ingenio.getId(), mineralPrincipal, timestamp, random, sufijo);
         }
 
         return codigo;
     }
 
-    private void crearRelacionesConLotes(Concentrado concentrado, List<Lotes> lotes) {
+    /**
+     * Crea relaciones entre concentrado y lotes
+     * El peso se distribuye según el porcentaje del concentrado
+     */
+    private void crearRelacionesConLotes(Concentrado concentrado, List<Lotes> lotes, Integer porcentajePeso) {
         for (Lotes lote : lotes) {
+            BigDecimal pesoEntrada = lote.getPesoTotalReal()
+                    .multiply(BigDecimal.valueOf(porcentajePeso))
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
             LoteConcentradoRelacion relacion = LoteConcentradoRelacion.builder()
                     .loteComplejoId(lote)
                     .concentradoId(concentrado)
-                    .pesoEntrada(lote.getPesoTotalReal())
+                    .pesoEntrada(pesoEntrada)
                     .fechaCreacion(LocalDateTime.now())
                     .build();
 
@@ -756,7 +1123,6 @@ public class ConcentradoIngenioBl {
             loteProcesoPlantaRepository.save(loteProcesoPlanta);
         }
     }
-
     private void transicionarEstado(
             Concentrado concentrado,
             String nuevoEstado,
@@ -824,6 +1190,62 @@ public class ConcentradoIngenioBl {
             return "[]";
         }
     }
+    private void registrarAuditoriaCreacionMultiple(
+            List<Concentrado> concentrados,
+            List<Lotes> lotes,
+            Integer usuarioId,
+            String ipOrigen
+    ) {
+        for (Concentrado concentrado : concentrados) {
+            List<Map<String, Object>> historial = obtenerHistorial(concentrado);
+            Map<String, Object> ultimoRegistro = historial.getLast();
+            ultimoRegistro.put("lotes_ids", lotes.stream().map(Lotes::getId).collect(Collectors.toList()));
+            ultimoRegistro.put("cantidad_lotes", lotes.size());
+            ultimoRegistro.put("accion", "CREAR_CONCENTRADO");
+            ultimoRegistro.put("concentrados_hermanos",
+                    concentrados.stream().map(Concentrado::getId).collect(Collectors.toList()));
+
+            concentrado.setObservaciones(convertirHistorialAJson(historial));
+            concentradoRepository.save(concentrado);
+        }
+    }
+
+    private void notificarCreacionMultiple(
+            List<Concentrado> concentrados,
+            IngenioMinero ingenio,
+            Socio socio
+    ) {
+        Integer socioUsuarioId = socio.getUsuariosId().getId();
+
+        String minerales = concentrados.stream()
+                .map(Concentrado::getMineralPrincipal)
+                .collect(Collectors.joining(", "));
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("concentrados", concentrados.stream()
+                .map(c -> Map.of(
+                        "id", c.getId(),
+                        "codigo", c.getCodigoConcentrado(),
+                        "mineral", c.getMineralPrincipal(),
+                        "peso", c.getPesoInicial()
+                ))
+                .collect(Collectors.toList()));
+        metadata.put("ingenioNombre", ingenio.getRazonSocial());
+
+        String mensaje = concentrados.size() == 1
+                ? "Se ha creado el concentrado de " + minerales + " con tus lotes en el ingenio " + ingenio.getRazonSocial()
+                : "Se han creado " + concentrados.size() + " concentrados (" + minerales + ") con tus lotes en el ingenio " + ingenio.getRazonSocial();
+
+        notificacionBl.crearNotificacion(
+                socioUsuarioId,
+                "info",
+                "Concentrado(s) creado(s)",
+                mensaje,
+                metadata
+        );
+    }
+
+
 
     private void validarOrdenProcesos(Concentrado concentrado, LoteProcesoPlanta procesoActual) {
         List<LoteProcesoPlanta> procesos = loteProcesoPlantaRepository
@@ -847,7 +1269,7 @@ public class ConcentradoIngenioBl {
 
     private void registrarAuditoriaCreacion(Concentrado concentrado, List<Lotes> lotes, Integer usuarioId, String ipOrigen) {
         List<Map<String, Object>> historial = obtenerHistorial(concentrado);
-        Map<String, Object> ultimoRegistro = historial.get(historial.size() - 1);
+        Map<String, Object> ultimoRegistro = historial.getLast();
         ultimoRegistro.put("lotes_ids", lotes.stream().map(Lotes::getId).collect(Collectors.toList()));
         ultimoRegistro.put("cantidad_lotes", lotes.size());
         ultimoRegistro.put("accion", "CREAR_CONCENTRADO");
@@ -1030,6 +1452,7 @@ public class ConcentradoIngenioBl {
             payload.put("evento", evento);
             payload.put("concentradoId", concentrado.getId());
             payload.put("codigoConcentrado", concentrado.getCodigoConcentrado());
+            payload.put("mineralPrincipal", concentrado.getMineralPrincipal());
             payload.put("estado", concentrado.getEstado());
             payload.put("timestamp", LocalDateTime.now().toString());
 
@@ -1077,6 +1500,8 @@ public class ConcentradoIngenioBl {
         dto.setPesoFinal(concentrado.getPesoFinal());
         dto.setMerma(concentrado.getMerma());
         dto.setMineralPrincipal(concentrado.getMineralPrincipal());
+        dto.setMineralesSecundarios(concentrado.getMineralesSecundarios()); // NUEVO
+        dto.setLoteOrigenMultiple(concentrado.getLoteOrigenMultiple()); // NUEVO
         dto.setNumeroSacos(concentrado.getNumeroSacos());
         dto.setIngenioId(concentrado.getIngenioMineroId().getId());
         dto.setIngenioNombre(concentrado.getIngenioMineroId().getRazonSocial());
@@ -1087,7 +1512,8 @@ public class ConcentradoIngenioBl {
             Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
             if (persona != null) {
                 dto.setSocioNombres(persona.getNombres());
-                dto.setSocioApellidos(persona.getPrimerApellido() + (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
+                dto.setSocioApellidos(persona.getPrimerApellido() +
+                        (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
                 dto.setSocioCi(persona.getCi());
             }
         }
@@ -1107,11 +1533,14 @@ public class ConcentradoIngenioBl {
         dto.setLotes(lotesDto);
 
         if (!concentrado.getLoteConcentradoRelacionList().isEmpty()) {
-            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().get(0).getLoteComplejoId();
+            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().getFirst().getLoteComplejoId();
             List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(primerLote);
             dto.setMinerales(
                     loteMinerales.stream()
-                            .map(lm -> new MineralInfoDto(lm.getMineralesId().getId(), lm.getMineralesId().getNombre(), lm.getMineralesId().getNomenclatura()))
+                            .map(lm -> new MineralInfoDto(
+                                    lm.getMineralesId().getId(),
+                                    lm.getMineralesId().getNombre(),
+                                    lm.getMineralesId().getNomenclatura()))
                             .collect(Collectors.toList())
             );
         }
@@ -1122,8 +1551,11 @@ public class ConcentradoIngenioBl {
         dto.setUpdatedAt(concentrado.getUpdatedAt());
 
         try {
-            List<Map<String, Object>> historial = objectMapper.readValue(concentrado.getObservaciones(), new TypeReference<List<Map<String, Object>>>() {});
-            dto.setObservaciones(historial.isEmpty() ? null : historial.get(historial.size() - 1));
+            List<Map<String, Object>> historial = objectMapper.readValue(
+                    concentrado.getObservaciones(),
+                    new TypeReference<List<Map<String, Object>>>() {}
+            );
+            dto.setObservaciones(historial.isEmpty() ? null : historial.getLast());
         } catch (Exception e) {
             log.warn("Error al parsear observaciones del concentrado ID: {}", concentrado.getId());
         }
@@ -1167,5 +1599,27 @@ public class ConcentradoIngenioBl {
         dto.setUpdatedAt(liquidacion.getUpdatedAt());
 
         return dto;
+    }
+
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> obtenerInfoPlanta(Integer usuarioId) {
+        log.debug("Obteniendo información de la planta - Usuario ID: {}", usuarioId);
+
+        IngenioMinero ingenio = obtenerIngenioDelUsuario(usuarioId);
+
+        Planta planta = plantaRepository.findByIngenioMineroId(ingenio)
+                .orElseThrow(() -> new IllegalArgumentException("El ingenio no tiene planta configurada"));
+
+        Map<String, Object> info = new HashMap<>();
+        info.put("cupoMinimo", planta.getCupoMinimo());
+        info.put("capacidadProcesamiento", planta.getCapacidadProcesamiento());
+        info.put("costoProcesamiento", planta.getCostoProcesamiento());
+        info.put("departamento", planta.getDepartamento());
+        info.put("provincia", planta.getProvincia());
+        info.put("municipio", planta.getMunicipio());
+        info.put("direccion", planta.getDireccion());
+
+        return info;
     }
 }

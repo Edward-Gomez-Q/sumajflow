@@ -14,6 +14,7 @@ import ucb.edu.bo.sumajflow.utils.JwtUtil;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -133,7 +134,7 @@ public class ConcentradoIngenioController {
     }
 
     /**
-     * Crear un nuevo concentrado
+     * Crear concentrado(s) a partir de lote(s)
      * POST /ingenio/concentrados
      */
     @PostMapping
@@ -148,15 +149,24 @@ public class ConcentradoIngenioController {
             Integer usuarioId = extractUsuarioId(token);
             String ipOrigen = HttpUtils.obtenerIpCliente(request);
 
-            ConcentradoResponseDto concentrado = concentradoIngenioBl.crearConcentrado(
+            List<ConcentradoResponseDto> concentrados = concentradoIngenioBl.crearConcentrado(
                     createDto,
                     usuarioId,
                     ipOrigen
             );
 
+            String mensaje = concentrados.size() == 1
+                    ? "Concentrado creado exitosamente"
+                    : concentrados.size() + " concentrados creados exitosamente (" +
+                    concentrados.stream()
+                            .map(ConcentradoResponseDto::getMineralPrincipal)
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("") + ")";
+
             response.put("success", true);
-            response.put("message", "Concentrado creado exitosamente");
-            response.put("data", concentrado);
+            response.put("message", mensaje);
+            response.put("data", concentrados);
+            response.put("cantidad", concentrados.size());
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -434,6 +444,76 @@ public class ConcentradoIngenioController {
             response.put("success", true);
             response.put("message", "Pago de servicio registrado exitosamente");
             response.put("data", concentrado);
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error interno del servidor: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+    /**
+     * Obtener información de la planta del ingenio (cupo mínimo, capacidad)
+     * GET /ingenio/concentrados/info-planta
+     */
+    @GetMapping("/info-planta")
+    public ResponseEntity<Map<String, Object>> obtenerInfoPlanta(
+            @RequestHeader("Authorization") String token
+    ) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Integer usuarioId = extractUsuarioId(token);
+
+            Map<String, Object> infoPlanta = concentradoIngenioBl.obtenerInfoPlanta(usuarioId);
+
+            response.put("success", true);
+            response.put("data", infoPlanta);
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error al obtener información de la planta: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+    /**
+     * Mover concentrado directamente a un proceso específico (Kanban drag & drop)
+     * POST /ingenio/concentrados/{id}/mover-a-proceso
+     */
+    @PostMapping("/{id}/mover-a-proceso")
+    public ResponseEntity<Map<String, Object>> moverAProceso(
+            @PathVariable Integer id,
+            @Valid @RequestBody ProcesoMoverDto moverDto,
+            @RequestHeader("Authorization") String token,
+            HttpServletRequest request
+    ) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            Integer usuarioId = extractUsuarioId(token);
+            String ipOrigen = HttpUtils.obtenerIpCliente(request);
+
+            ProcesosConcentradoResponseDto procesos = concentradoIngenioBl.moverAProceso(
+                    id,
+                    moverDto,
+                    usuarioId,
+                    ipOrigen
+            );
+
+            response.put("success", true);
+            response.put("message", "Concentrado movido exitosamente");
+            response.put("data", procesos);
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
