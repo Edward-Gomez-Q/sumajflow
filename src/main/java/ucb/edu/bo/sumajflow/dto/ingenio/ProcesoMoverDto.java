@@ -1,19 +1,21 @@
 package ucb.edu.bo.sumajflow.dto.ingenio;
 
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.Size;
+import lombok.*;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ProcesoMoverDto {
 
     @NotNull(message = "El ID del proceso destino es requerido")
     private Integer procesoDestinoId;
 
-    private String observaciones;
+    @Size(max = 500, message = "Las observaciones de fin de proceso no pueden exceder 500 caracteres")
+    private String observacionesFinProceso;
 
-    private Boolean completarIntermedios; // true = completar procesos intermedios automáticamente
+    @Size(max = 500, message = "Las observaciones de inicio de proceso no pueden exceder 500 caracteres")
+    private String observacionesInicioProceso;
 }

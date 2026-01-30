@@ -25,13 +25,8 @@ public class ConcentradoMineralAnalyzer {
     /**
      * Analiza los minerales de un lote y determina qué concentrados crear
      */
-    public ConcentradosPlanificados determinarConcentrados(List<LoteMinerales> loteMinerales) {
-        // Obtener nomenclaturas de minerales presentes
-        Set<String> mineralesPresentes = loteMinerales.stream()
-                .map(lm -> lm.getMineralesId().getNomenclatura())
-                .collect(Collectors.toSet());
-
-        log.debug("Minerales detectados en el lote: {}", mineralesPresentes);
+    public ConcentradosPlanificados determinarConcentradosDesdeSet(Set<String> mineralesPresentes) {
+        log.debug("Minerales batch detectados: {}", mineralesPresentes);
 
         boolean tieneZn = mineralesPresentes.contains(ZINC);
         boolean tienePb = mineralesPresentes.contains(PLOMO);
@@ -40,88 +35,51 @@ public class ConcentradoMineralAnalyzer {
         List<ConcentradoPlanificado> concentrados = new ArrayList<>();
 
         if (tieneZn && tienePb) {
-            log.info("Caso detectado: Zn + Pb => Crear 2 concentrados");
+            log.info("Caso batch: Zn + Pb => Crear 2 concentrados (Zn y Pb). Secundarios: solo Ag si existe.");
 
-            // Concentrado de Zinc
             ConcentradoPlanificado concZn = ConcentradoPlanificado.builder()
                     .mineralPrincipal(ZINC)
-                    .mineralesSecundarios(tienePb ? PLOMO : null)
-                    .mineralesTraza(tieneAg ? PLATA : null)
-                    .porcentajePeso(50) // Por defecto 50/50, puede ajustarse
+                    .mineralesSecundarios(null)               // <- NO cruzar Pb
+                    .mineralesTraza(tieneAg ? PLATA : null)   // <- solo Ag
+                    .porcentajePeso(50)
                     .build();
 
-            // Concentrado de Plomo
             ConcentradoPlanificado concPb = ConcentradoPlanificado.builder()
                     .mineralPrincipal(PLOMO)
-                    .mineralesSecundarios(tieneZn ? ZINC : null)
+                    .mineralesSecundarios(null)               // <- NO cruzar Zn
                     .mineralesTraza(tieneAg ? PLATA : null)
                     .porcentajePeso(50)
                     .build();
 
             concentrados.add(concZn);
             concentrados.add(concPb);
-        }
-        else if (tieneZn && tieneAg && !tienePb) {
-            log.info("Caso detectado: Zn + Ag => Crear 1 concentrado de Zn");
-
+        } else if (tieneZn && !tienePb) {
+            // Zn (con o sin Ag)
             ConcentradoPlanificado concZn = ConcentradoPlanificado.builder()
                     .mineralPrincipal(ZINC)
-                    .mineralesTraza(PLATA)
+                    .mineralesTraza(tieneAg ? PLATA : null)
                     .porcentajePeso(100)
                     .build();
-
             concentrados.add(concZn);
-        }
-        else if (tienePb && tieneAg && !tieneZn) {
-            log.info("Caso detectado: Pb + Ag => Crear 1 concentrado de Pb");
-
+        } else if (tienePb && !tieneZn) {
+            // Pb (con o sin Ag)
             ConcentradoPlanificado concPb = ConcentradoPlanificado.builder()
                     .mineralPrincipal(PLOMO)
-                    .mineralesTraza(PLATA)
+                    .mineralesTraza(tieneAg ? PLATA : null)
                     .porcentajePeso(100)
                     .build();
-
             concentrados.add(concPb);
-        }
-        else if (tieneZn && !tienePb && !tieneAg) {
-            log.info("Caso detectado: Solo Zn => Crear 1 concentrado de Zn");
-
-            ConcentradoPlanificado concZn = ConcentradoPlanificado.builder()
-                    .mineralPrincipal(ZINC)
-                    .porcentajePeso(100)
-                    .build();
-
-            concentrados.add(concZn);
-        }
-        else if (tienePb && !tieneZn && !tieneAg) {
-            log.info("Caso detectado: Solo Pb => Crear 1 concentrado de Pb");
-
-            ConcentradoPlanificado concPb = ConcentradoPlanificado.builder()
-                    .mineralPrincipal(PLOMO)
-                    .porcentajePeso(100)
-                    .build();
-
-            concentrados.add(concPb);
-        }
-        else if (tieneAg && !tieneZn && !tienePb) {
-            log.warn("Caso detectado: Solo Ag => Crear 1 concentrado de Ag (requiere revisión)");
-
+        } else if (tieneAg) {
+            // Solo Ag
             ConcentradoPlanificado concAg = ConcentradoPlanificado.builder()
                     .mineralPrincipal(PLATA)
                     .porcentajePeso(100)
                     .requiereRevision(true)
                     .observacionRevision("Concentrado solo de Plata - caso inusual")
                     .build();
-
             concentrados.add(concAg);
-        }
-        // CASO DESCONOCIDO
-        else {
-            log.error("No se detectaron minerales válidos en el lote");
-            throw new IllegalArgumentException(
-                    "No se pudieron determinar minerales válidos para crear concentrados. Minerales detectados: " +
-                            mineralesPresentes
-            );
+        } else {
+            throw new IllegalArgumentException("No se pudieron determinar minerales válidos. Minerales: " + mineralesPresentes);
         }
 
         return ConcentradosPlanificados.builder()
@@ -129,20 +87,15 @@ public class ConcentradoMineralAnalyzer {
                 .esMultiple(concentrados.size() > 1)
                 .build();
     }
-
     /**
      * Construye la cadena de minerales secundarios para guardar en BD
      */
     public String construirMineralesSecundarios(ConcentradoPlanificado planificado) {
         List<String> secundarios = new ArrayList<>();
 
-        if (planificado.getMineralesSecundarios() != null) {
-            secundarios.add(planificado.getMineralesSecundarios());
-        }
-
-        if (planificado.getMineralesTraza() != null) {
-            secundarios.add(planificado.getMineralesTraza());
-        }
+        // Regla: en BD guardamos solo traza (Ag) y/o un secundario real si existiera en otros escenarios.
+        if (planificado.getMineralesSecundarios() != null) secundarios.add(planificado.getMineralesSecundarios());
+        if (planificado.getMineralesTraza() != null) secundarios.add(planificado.getMineralesTraza());
 
         return secundarios.isEmpty() ? null : String.join(", ", secundarios);
     }
@@ -158,7 +111,7 @@ public class ConcentradoMineralAnalyzer {
         private String mineralPrincipal;
         private String mineralesSecundarios;
         private String mineralesTraza;
-        private Integer porcentajePeso; // 0-100
+        private Integer porcentajePeso;
 
         @Builder.Default
         private Boolean requiereRevision = false;

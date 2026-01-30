@@ -56,6 +56,6 @@ public class ConcentradoResponseDto {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Observaciones (último registro del historial)
-    private Map<String, Object> observaciones;
+    // Observaciones
+    private List<Map<String, Object>> observaciones;
 }

@@ -1,21 +1,13 @@
 package ucb.edu.bo.sumajflow.bl.comercializadora;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
-import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -42,14 +34,12 @@ public class ConcentradoComercializadoraBl {
     private final UsuariosRepository usuariosRepository;
     private final ComercializadoraRepository comercializadoraRepository;
     private final PersonaRepository personaRepository;
-    private final LoteMineralesRepository loteMineralesRepository;
     private final LiquidacionRepository liquidacionRepository;
     private final LiquidacionConcentradoRepository liquidacionConcentradoRepository;
 
     // Servicios
+    private final ConcentradoBl concentradoBl;
     private final NotificacionBl notificacionBl;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final ObjectMapper objectMapper;
 
     // ==================== LISTAR CONCENTRADOS DISPONIBLES PARA VENTA ====================
 
@@ -70,8 +60,6 @@ public class ConcentradoComercializadoraBl {
 
         Comercializadora comercializadora = obtenerComercializadoraDelUsuario(usuarioId);
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-
         // Obtener todos los concentrados en estados de venta
         List<String> estadosVenta = Arrays.asList(
                 "venta_solicitada",
@@ -80,38 +68,19 @@ public class ConcentradoComercializadoraBl {
                 "vendido"
         );
 
-        List<Concentrado> todosLosConcentrados = concentradoRepository.findAll().stream()
+        List<Concentrado> concentradosVenta = concentradoRepository.findAll().stream()
                 .filter(c -> estadosVenta.contains(c.getEstado()))
-                .toList();
-
-        // Aplicar filtros
-        List<Concentrado> concentradosFiltrados = todosLosConcentrados.stream()
-                .filter(c -> {
-                    if (estado != null && !estado.isEmpty() && !estado.equals(c.getEstado())) {
-                        return false;
-                    }
-                    if (mineralPrincipal != null && !mineralPrincipal.isEmpty() && !mineralPrincipal.equals(c.getMineralPrincipal())) {
-                        return false;
-                    }
-                    if (fechaDesde != null && c.getCreatedAt().isBefore(fechaDesde)) {
-                        return false;
-                    }
-                    if (fechaHasta != null && c.getCreatedAt().isAfter(fechaHasta)) {
-                        return false;
-                    }
-                    return true;
-                })
                 .collect(Collectors.toList());
 
-        // Aplicar paginación
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), concentradosFiltrados.size());
-
-        List<ConcentradoResponseDto> paginaActual = concentradosFiltrados.subList(start, end).stream()
-                .map(this::convertirAResponseDto)
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(paginaActual, pageable, concentradosFiltrados.size());
+        return concentradoBl.listarConcentradosConFiltros(
+                concentradosVenta,
+                estado,
+                mineralPrincipal,
+                fechaDesde,
+                fechaHasta,
+                page,
+                size
+        );
     }
 
     /**
@@ -123,10 +92,7 @@ public class ConcentradoComercializadoraBl {
 
         Comercializadora comercializadora = obtenerComercializadoraDelUsuario(usuarioId);
 
-        Concentrado concentrado = concentradoRepository.findById(concentradoId)
-                .orElseThrow(() -> new IllegalArgumentException("Concentrado no encontrado"));
-
-        return convertirAResponseDto(concentrado);
+        return concentradoBl.obtenerDetalle(concentradoId);
     }
 
     /**
@@ -169,18 +135,13 @@ public class ConcentradoComercializadoraBl {
 
         Comercializadora comercializadora = obtenerComercializadoraDelUsuario(usuarioId);
 
-        Concentrado concentrado = concentradoRepository.findById(concentradoId)
-                .orElseThrow(() -> new IllegalArgumentException("Concentrado no encontrado"));
+        Concentrado concentrado = concentradoBl.obtenerConcentrado(concentradoId);
 
         // Validar estado
-        if (!"venta_solicitada".equals(concentrado.getEstado())) {
-            throw new IllegalArgumentException(
-                    "El concentrado no tiene solicitud de venta pendiente. Estado actual: " + concentrado.getEstado()
-            );
-        }
+        concentradoBl.validarEstado(concentrado, "venta_solicitada");
 
         // Transicionar estado
-        transicionarEstado(
+        concentradoBl.transicionarEstado(
                 concentrado,
                 "venta_en_revision",
                 "Comercializadora está revisando la solicitud de venta",
@@ -190,9 +151,9 @@ public class ConcentradoComercializadoraBl {
         );
 
         // WebSocket
-        publicarEventoWebSocket(concentrado, "venta_en_revision");
+        concentradoBl.publicarEventoWebSocket(concentrado, "venta_en_revision");
 
-        return convertirAResponseDto(concentrado);
+        return concentradoBl.convertirAResponseDto(concentrado);
     }
 
     // ==================== APROBAR VENTA ====================
@@ -211,15 +172,10 @@ public class ConcentradoComercializadoraBl {
 
         Comercializadora comercializadora = obtenerComercializadoraDelUsuario(usuarioId);
 
-        Concentrado concentrado = concentradoRepository.findById(concentradoId)
-                .orElseThrow(() -> new IllegalArgumentException("Concentrado no encontrado"));
+        Concentrado concentrado = concentradoBl.obtenerConcentrado(concentradoId);
 
         // Validar estado
-        if (!"venta_en_revision".equals(concentrado.getEstado())) {
-            throw new IllegalArgumentException(
-                    "La venta no está en revisión. Estado actual: " + concentrado.getEstado()
-            );
-        }
+        concentradoBl.validarEstado(concentrado, "venta_en_revision");
 
         // Crear registro de liquidación de venta
         Liquidacion liquidacion = Liquidacion.builder()
@@ -245,7 +201,7 @@ public class ConcentradoComercializadoraBl {
         liquidacionConcentradoRepository.save(liquidacionConcentrado);
 
         // Transicionar estado
-        transicionarEstado(
+        concentradoBl.transicionarEstado(
                 concentrado,
                 "venta_liquidada",
                 "Venta aprobada por comercializadora - Precio: " + aprobarDto.getPrecioVenta() + " BOB",
@@ -255,7 +211,7 @@ public class ConcentradoComercializadoraBl {
         );
 
         // Registrar auditoría
-        List<Map<String, Object>> historial = obtenerHistorial(concentrado);
+        List<Map<String, Object>> historial = concentradoBl.obtenerHistorial(concentrado);
         Map<String, Object> registro = new HashMap<>();
         registro.put("accion", "APROBAR_VENTA");
         registro.put("liquidacion_id", liquidacion.getId());
@@ -267,14 +223,14 @@ public class ConcentradoComercializadoraBl {
         registro.put("ip_origen", ipOrigen);
         registro.put("timestamp", LocalDateTime.now().toString());
         historial.add(registro);
-        concentrado.setObservaciones(convertirHistorialAJson(historial));
+        concentrado.setObservaciones(concentradoBl.convertirHistorialAJson(historial));
         concentradoRepository.save(concentrado);
 
         // Notificar al socio e ingenio
         notificarVentaAprobada(concentrado, liquidacion, comercializadora);
 
         // WebSocket
-        publicarEventoWebSocket(concentrado, "venta_liquidada");
+        concentradoBl.publicarEventoWebSocket(concentrado, "venta_liquidada");
 
         return convertirVentaADto(liquidacion, concentrado, comercializadora);
     }
@@ -295,15 +251,10 @@ public class ConcentradoComercializadoraBl {
 
         Comercializadora comercializadora = obtenerComercializadoraDelUsuario(usuarioId);
 
-        Concentrado concentrado = concentradoRepository.findById(concentradoId)
-                .orElseThrow(() -> new IllegalArgumentException("Concentrado no encontrado"));
+        Concentrado concentrado = concentradoBl.obtenerConcentrado(concentradoId);
 
         // Validar estado
-        if (!"venta_liquidada".equals(concentrado.getEstado())) {
-            throw new IllegalArgumentException(
-                    "La venta no está liquidada. Estado actual: " + concentrado.getEstado()
-            );
-        }
+        concentradoBl.validarEstado(concentrado, "venta_liquidada");
 
         // Obtener liquidación de venta
         LiquidacionConcentrado liquidacionConcentrado = concentrado.getLiquidacionConcentradoList().stream()
@@ -318,7 +269,7 @@ public class ConcentradoComercializadoraBl {
         liquidacionRepository.save(liquidacion);
 
         // Transicionar concentrado a "vendido" (estado final)
-        transicionarEstado(
+        concentradoBl.transicionarEstado(
                 concentrado,
                 "vendido",
                 "Venta completada - Pago registrado: " + pagoDto.getMontoPagado() + " BOB",
@@ -332,7 +283,7 @@ public class ConcentradoComercializadoraBl {
         concentradoRepository.save(concentrado);
 
         // Registrar auditoría del pago
-        List<Map<String, Object>> historial = obtenerHistorial(concentrado);
+        List<Map<String, Object>> historial = concentradoBl.obtenerHistorial(concentrado);
         Map<String, Object> registro = new HashMap<>();
         registro.put("accion", "REGISTRAR_PAGO_VENTA");
         registro.put("liquidacion_id", liquidacion.getId());
@@ -345,18 +296,18 @@ public class ConcentradoComercializadoraBl {
         registro.put("ip_origen", ipOrigen);
         registro.put("timestamp", LocalDateTime.now().toString());
         historial.add(registro);
-        concentrado.setObservaciones(convertirHistorialAJson(historial));
+        concentrado.setObservaciones(concentradoBl.convertirHistorialAJson(historial));
         concentradoRepository.save(concentrado);
 
         // Notificar a todos los involucrados
         notificarVentaCompletada(concentrado);
 
         // WebSocket
-        publicarEventoWebSocket(concentrado, "concentrado_vendido");
+        concentradoBl.publicarEventoWebSocket(concentrado, "concentrado_vendido");
 
         log.info("Venta completada - Concentrado ID: {} VENDIDO", concentradoId);
 
-        return convertirAResponseDto(concentrado);
+        return concentradoBl.convertirAResponseDto(concentrado);
     }
 
     // ==================== VER HISTORIAL DE VENTAS ====================
@@ -388,7 +339,7 @@ public class ConcentradoComercializadoraBl {
                 .collect(Collectors.toList());
     }
 
-    // ==================== MÉTODOS AUXILIARES PRIVADOS ====================
+    // ==================== METODOS AUXILIARES PRIVADOS ====================
 
     private Comercializadora obtenerComercializadoraDelUsuario(Integer usuarioId) {
         Usuarios usuario = usuariosRepository.findById(usuarioId)
@@ -396,74 +347,6 @@ public class ConcentradoComercializadoraBl {
 
         return comercializadoraRepository.findByUsuariosId(usuario)
                 .orElseThrow(() -> new IllegalArgumentException("Comercializadora no encontrada"));
-    }
-
-    private void transicionarEstado(
-            Concentrado concentrado,
-            String nuevoEstado,
-            String descripcion,
-            String observacionesAdicionales,
-            Integer usuarioId,
-            String ipOrigen
-    ) {
-        String estadoAnterior = concentrado.getEstado();
-        concentrado.setEstado(nuevoEstado);
-
-        List<Map<String, Object>> historial = obtenerHistorial(concentrado);
-        Map<String, Object> registro = crearRegistroHistorial(
-                nuevoEstado,
-                descripcion,
-                observacionesAdicionales,
-                usuarioId,
-                ipOrigen
-        );
-        registro.put("estado_anterior", estadoAnterior);
-        historial.add(registro);
-
-        concentrado.setObservaciones(convertirHistorialAJson(historial));
-        concentradoRepository.save(concentrado);
-    }
-
-    private Map<String, Object> crearRegistroHistorial(
-            String estado,
-            String descripcion,
-            String observaciones,
-            Integer usuarioId,
-            String ipOrigen
-    ) {
-        Map<String, Object> registro = new HashMap<>();
-        registro.put("estado", estado);
-        registro.put("descripcion", descripcion);
-        registro.put("observaciones", observaciones);
-        registro.put("usuario_id", usuarioId);
-        registro.put("ip_origen", ipOrigen);
-        registro.put("timestamp", LocalDateTime.now().toString());
-        return registro;
-    }
-
-    private List<Map<String, Object>> obtenerHistorial(Concentrado concentrado) {
-        if (concentrado.getObservaciones() == null || concentrado.getObservaciones().isBlank()) {
-            return new ArrayList<>();
-        }
-
-        try {
-            return objectMapper.readValue(
-                    concentrado.getObservaciones(),
-                    new TypeReference<List<Map<String, Object>>>() {}
-            );
-        } catch (JsonProcessingException e) {
-            log.error("Error al parsear historial del concentrado ID: {}", concentrado.getId(), e);
-            return new ArrayList<>();
-        }
-    }
-
-    private String convertirHistorialAJson(List<Map<String, Object>> historial) {
-        try {
-            return objectMapper.writeValueAsString(historial);
-        } catch (JsonProcessingException e) {
-            log.error("Error al convertir historial a JSON", e);
-            return "[]";
-        }
     }
 
     private void notificarVentaAprobada(Concentrado concentrado, Liquidacion liquidacion, Comercializadora comercializadora) {
@@ -529,91 +412,6 @@ public class ConcentradoComercializadoraBl {
         );
     }
 
-    private void publicarEventoWebSocket(Concentrado concentrado, String evento) {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("evento", evento);
-            payload.put("concentradoId", concentrado.getId());
-            payload.put("codigoConcentrado", concentrado.getCodigoConcentrado());
-            payload.put("estado", concentrado.getEstado());
-            payload.put("timestamp", LocalDateTime.now().toString());
-
-            // Canal del ingenio
-            String canalIngenio = "/topic/ingenio/" + concentrado.getIngenioMineroId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canalIngenio, payload);
-
-            // Canal del socio
-            String canalSocio = "/topic/socio/" + concentrado.getSocioPropietarioId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canalSocio, payload);
-
-        } catch (Exception e) {
-            log.error("Error al publicar evento WebSocket", e);
-        }
-    }
-
-    private ConcentradoResponseDto convertirAResponseDto(Concentrado concentrado) {
-        ConcentradoResponseDto dto = new ConcentradoResponseDto();
-        dto.setId(concentrado.getId());
-        dto.setCodigoConcentrado(concentrado.getCodigoConcentrado());
-        dto.setEstado(concentrado.getEstado());
-        dto.setPesoInicial(concentrado.getPesoInicial());
-        dto.setPesoFinal(concentrado.getPesoFinal());
-        dto.setMerma(concentrado.getMerma());
-        dto.setMineralPrincipal(concentrado.getMineralPrincipal());
-        dto.setNumeroSacos(concentrado.getNumeroSacos());
-        dto.setIngenioId(concentrado.getIngenioMineroId().getId());
-        dto.setIngenioNombre(concentrado.getIngenioMineroId().getRazonSocial());
-
-        Socio socio = concentrado.getSocioPropietarioId();
-        if (socio != null) {
-            dto.setSocioId(socio.getId());
-            Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
-            if (persona != null) {
-                dto.setSocioNombres(persona.getNombres());
-                dto.setSocioApellidos(persona.getPrimerApellido() + (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
-                dto.setSocioCi(persona.getCi());
-            }
-        }
-
-        List<LoteSimpleDto> lotesDto = concentrado.getLoteConcentradoRelacionList().stream()
-                .map(relacion -> {
-                    Lotes lote = relacion.getLoteComplejoId();
-                    return LoteSimpleDto.builder()
-                            .id(lote.getId())
-                            .minaNombre(lote.getMinasId().getNombre())
-                            .tipoMineral(lote.getTipoMineral())
-                            .pesoTotalReal(lote.getPesoTotalReal())
-                            .estado(lote.getEstado())
-                            .build();
-                })
-                .collect(Collectors.toList());
-        dto.setLotes(lotesDto);
-
-        if (!concentrado.getLoteConcentradoRelacionList().isEmpty()) {
-            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().get(0).getLoteComplejoId();
-            List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(primerLote);
-            dto.setMinerales(
-                    loteMinerales.stream()
-                            .map(lm -> new MineralInfoDto(lm.getMineralesId().getId(), lm.getMineralesId().getNombre(), lm.getMineralesId().getNomenclatura()))
-                            .collect(Collectors.toList())
-            );
-        }
-
-        dto.setFechaInicio(concentrado.getFechaInicio());
-        dto.setFechaFin(concentrado.getFechaFin());
-        dto.setCreatedAt(concentrado.getCreatedAt());
-        dto.setUpdatedAt(concentrado.getUpdatedAt());
-
-        try {
-            List<Map<String, Object>> historial = objectMapper.readValue(concentrado.getObservaciones(), new TypeReference<List<Map<String, Object>>>() {});
-            dto.setObservaciones(historial.isEmpty() ? null : historial.get(historial.size() - 1));
-        } catch (Exception e) {
-            log.warn("Error al parsear observaciones del concentrado ID: {}", concentrado.getId());
-        }
-
-        return dto;
-    }
-
     private VentaConcentradoResponseDto convertirVentaADto(
             Liquidacion liquidacion,
             Concentrado concentrado,
@@ -628,7 +426,8 @@ public class ConcentradoComercializadoraBl {
         Persona persona = personaRepository.findByUsuariosId(liquidacion.getSocioId().getUsuariosId()).orElse(null);
         if (persona != null) {
             dto.setSocioNombres(persona.getNombres());
-            dto.setSocioApellidos(persona.getPrimerApellido() + (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
+            dto.setSocioApellidos(persona.getPrimerApellido() +
+                    (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
         }
 
         dto.setComercializadoraId(comercializadora.getId());

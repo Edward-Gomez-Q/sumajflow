@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Controlador REST para gestión de Concentrados por el INGENIO
- * Endpoints solo para operaciones que corresponden al rol Ingenio
+ * Controlador REST para gestión de Concentrados (CRUD básico)
+ * Endpoints para creación, listado y consulta de concentrados
  */
 @RestController
 @RequestMapping("/ingenio/concentrados")
@@ -50,13 +50,7 @@ public class ConcentradoIngenioController {
             Integer usuarioId = extractUsuarioId(token);
 
             Page<ConcentradoResponseDto> concentrados = concentradoIngenioBl.listarConcentrados(
-                    usuarioId,
-                    estado,
-                    mineralPrincipal,
-                    fechaDesde,
-                    fechaHasta,
-                    page,
-                    size
+                    usuarioId, estado, mineralPrincipal, fechaDesde, fechaHasta, page, size
             );
 
             response.put("success", true);
@@ -88,7 +82,6 @@ public class ConcentradoIngenioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-
             ConcentradoResponseDto concentrado = concentradoIngenioBl.obtenerDetalle(id, usuarioId);
 
             response.put("success", true);
@@ -119,7 +112,6 @@ public class ConcentradoIngenioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-
             Map<String, Object> dashboard = concentradoIngenioBl.obtenerDashboard(usuarioId);
 
             response.put("success", true);
@@ -150,9 +142,7 @@ public class ConcentradoIngenioController {
             String ipOrigen = HttpUtils.obtenerIpCliente(request);
 
             List<ConcentradoResponseDto> concentrados = concentradoIngenioBl.crearConcentrado(
-                    createDto,
-                    usuarioId,
-                    ipOrigen
+                    createDto, usuarioId, ipOrigen
             );
 
             String mensaje = concentrados.size() == 1
@@ -183,281 +173,6 @@ public class ConcentradoIngenioController {
     }
 
     /**
-     * Obtener procesos del Kanban de un concentrado
-     * GET /ingenio/concentrados/{id}/procesos
-     */
-    @GetMapping("/{id}/procesos")
-    public ResponseEntity<Map<String, Object>> obtenerProcesos(
-            @PathVariable Integer id,
-            @RequestHeader("Authorization") String token
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-
-            ProcesosConcentradoResponseDto procesos = concentradoIngenioBl.obtenerProcesos(id, usuarioId);
-
-            response.put("success", true);
-            response.put("data", procesos);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Avanzar proceso del Kanban (iniciar o completar)
-     * PATCH /ingenio/concentrados/{id}/procesos/{procesoId}/avanzar
-     */
-    @PatchMapping("/{id}/procesos/{procesoId}/avanzar")
-    public ResponseEntity<Map<String, Object>> avanzarProceso(
-            @PathVariable Integer id,
-            @PathVariable Integer procesoId,
-            @Valid @RequestBody ProcesoAvanzarDto avanzarDto,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ProcesosConcentradoResponseDto procesos = concentradoIngenioBl.avanzarProceso(
-                    id,
-                    procesoId,
-                    avanzarDto,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Proceso avanzado exitosamente");
-            response.put("data", procesos);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Registrar reporte químico del laboratorio
-     * POST /ingenio/concentrados/{id}/reporte-quimico
-     */
-    @PostMapping("/{id}/reporte-quimico")
-    public ResponseEntity<Map<String, Object>> registrarReporteQuimico(
-            @PathVariable Integer id,
-            @Valid @RequestBody ReporteQuimicoCreateDto reporteDto,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ConcentradoResponseDto concentrado = concentradoIngenioBl.registrarReporteQuimico(
-                    id,
-                    reporteDto,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Reporte químico registrado exitosamente");
-            response.put("data", concentrado);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Validar reporte químico (cambiar estado a "listo_para_liquidacion")
-     * PATCH /ingenio/concentrados/{id}/validar-reporte
-     */
-    @PatchMapping("/{id}/validar-reporte")
-    public ResponseEntity<Map<String, Object>> validarReporteQuimico(
-            @PathVariable Integer id,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ConcentradoResponseDto concentrado = concentradoIngenioBl.validarReporteQuimico(
-                    id,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Reporte químico validado exitosamente");
-            response.put("data", concentrado);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Revisar solicitud de liquidación de servicio
-     * PATCH /ingenio/concentrados/{id}/revisar-liquidacion-servicio
-     */
-    @PatchMapping("/{id}/revisar-liquidacion-servicio")
-    public ResponseEntity<Map<String, Object>> revisarLiquidacionServicio(
-            @PathVariable Integer id,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ConcentradoResponseDto concentrado = concentradoIngenioBl.revisarLiquidacionServicio(
-                    id,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Liquidación en revisión");
-            response.put("data", concentrado);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Aprobar liquidación de servicio (definir costo)
-     * POST /ingenio/concentrados/{id}/aprobar-liquidacion-servicio
-     */
-    @PostMapping("/{id}/aprobar-liquidacion-servicio")
-    public ResponseEntity<Map<String, Object>> aprobarLiquidacionServicio(
-            @PathVariable Integer id,
-            @Valid @RequestBody AprobarLiquidacionServicioDto aprobarDto,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            LiquidacionServicioResponseDto liquidacion = concentradoIngenioBl.aprobarLiquidacionServicio(
-                    id,
-                    aprobarDto,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Liquidación de servicio aprobada exitosamente");
-            response.put("data", liquidacion);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-
-    /**
-     * Registrar pago del servicio recibido del socio
-     * POST /ingenio/concentrados/{id}/registrar-pago-servicio
-     */
-    @PostMapping("/{id}/registrar-pago-servicio")
-    public ResponseEntity<Map<String, Object>> registrarPagoServicio(
-            @PathVariable Integer id,
-            @Valid @RequestBody RegistrarPagoServicioDto pagoDto,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ConcentradoResponseDto concentrado = concentradoIngenioBl.registrarPagoServicio(
-                    id,
-                    pagoDto,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Pago de servicio registrado exitosamente");
-            response.put("data", concentrado);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-    /**
      * Obtener información de la planta del ingenio (cupo mínimo, capacidad)
      * GET /ingenio/concentrados/info-planta
      */
@@ -469,7 +184,6 @@ public class ConcentradoIngenioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-
             Map<String, Object> infoPlanta = concentradoIngenioBl.obtenerInfoPlanta(usuarioId);
 
             response.put("success", true);
@@ -484,46 +198,6 @@ public class ConcentradoIngenioController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error al obtener información de la planta: " + e.getMessage());
-            return ResponseEntity.internalServerError().body(response);
-        }
-    }
-    /**
-     * Mover concentrado directamente a un proceso específico (Kanban drag & drop)
-     * POST /ingenio/concentrados/{id}/mover-a-proceso
-     */
-    @PostMapping("/{id}/mover-a-proceso")
-    public ResponseEntity<Map<String, Object>> moverAProceso(
-            @PathVariable Integer id,
-            @Valid @RequestBody ProcesoMoverDto moverDto,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest request
-    ) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            Integer usuarioId = extractUsuarioId(token);
-            String ipOrigen = HttpUtils.obtenerIpCliente(request);
-
-            ProcesosConcentradoResponseDto procesos = concentradoIngenioBl.moverAProceso(
-                    id,
-                    moverDto,
-                    usuarioId,
-                    ipOrigen
-            );
-
-            response.put("success", true);
-            response.put("message", "Concentrado movido exitosamente");
-            response.put("data", procesos);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-
-        } catch (Exception e) {
-            response.put("success", false);
-            response.put("message", "Error interno del servidor: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);
         }
     }
