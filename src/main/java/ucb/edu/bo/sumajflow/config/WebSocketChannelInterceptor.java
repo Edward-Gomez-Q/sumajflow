@@ -40,16 +40,14 @@ public class WebSocketChannelInterceptor implements ChannelInterceptor {
 
                         UsernamePasswordAuthenticationToken authentication =
                                 new UsernamePasswordAuthenticationToken(
-                                        correo,
+                                        usuarioId.toString(),
                                         null,
                                         Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + rol.toUpperCase()))
                                 );
 
-                        authentication.setDetails(usuarioId);
                         accessor.setUser(authentication);
-
-                        log.info("✅ WebSocket autenticado - Usuario ID: {}, Rol: {}", usuarioId, rol);
-                    } else {
+                        log.info("✅ WebSocket autenticado - Principal Name (ID): {}", usuarioId);
+                        } else {
                         log.warn("⚠️ Token JWT inválido en WebSocket");
                     }
                 } catch (Exception e) {

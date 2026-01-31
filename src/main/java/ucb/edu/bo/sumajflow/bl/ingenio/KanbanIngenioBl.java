@@ -58,7 +58,6 @@ public class KanbanIngenioBl {
      * Iniciar procesamiento: pasar de "Por Iniciar" al primer proceso
      * Estado: en_camino_a_planta → en_proceso
      */
-    @Transactional
     public ProcesosConcentradoResponseDto iniciarProcesamiento(
             Integer concentradoId,
             ProcesoIniciarDto iniciarDto,
@@ -265,7 +264,6 @@ public class KanbanIngenioBl {
      * Finalizar procesamiento: completar el último proceso
      * Estado: en_proceso → esperando_reporte_quimico
      */
-    @Transactional
     public ProcesosConcentradoResponseDto finalizarProcesamiento(
             Integer concentradoId,
             ProcesoFinalizarDto finalizarDto,

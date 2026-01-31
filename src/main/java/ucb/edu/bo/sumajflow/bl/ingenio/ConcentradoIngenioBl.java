@@ -149,7 +149,6 @@ public class ConcentradoIngenioBl {
      * Crear concentrado(s) a partir de lotes aprobados
      * Crea múltiples concentrados si el lote tiene Zn+Pb
      */
-    @Transactional
     public List<ConcentradoResponseDto> crearConcentrado(
             ConcentradoCreateDto createDto,
             Integer usuarioId,
@@ -206,6 +205,10 @@ public class ConcentradoIngenioBl {
         registrarAuditoriaCreacionMultiple(concentradosCreados, lotes, usuarioId, ipOrigen);
         notificarCreacionMultiple(concentradosCreados, ingenio, socioPropietario);
 
+        //Publicar en websocket
+        for (Concentrado concentrado : concentradosCreados) {
+            concentradoBl.publicarEventoWebSocket(concentrado, "concentrado_creado");
+        }
         // 10. DTOs
         return concentradosCreados.stream()
                 .map(concentradoBl::convertirAResponseDto)
@@ -286,9 +289,6 @@ public class ConcentradoIngenioBl {
                 usuarioId,
                 ipOrigen
         );
-
-        // 9. WebSocket
-        concentradoBl.publicarEventoWebSocket(concentrado, "concentrado_creado");
 
         return concentrado;
     }

@@ -329,8 +329,11 @@ public class ConcentradoBl {
             payloadLigero.put("estado", concentrado.getEstado());
             payloadLigero.put("timestamp", now.toString());
             Integer socioUsuarioId = concentrado.getSocioPropietarioId().getUsuariosId().getId();
-            String destinoSocio = "/user/" + socioUsuarioId + "/queue/concentrados";
-            messagingTemplate.convertAndSend(destinoSocio, payloadLigero);
+            messagingTemplate.convertAndSendToUser(
+                    socioUsuarioId.toString(),
+                    "/queue/concentrados",
+                    payloadLigero
+            );
 
             log.debug("📤 WebSocket ligero enviado a socio {} (cola personal): {}", socioUsuarioId, evento);
 
