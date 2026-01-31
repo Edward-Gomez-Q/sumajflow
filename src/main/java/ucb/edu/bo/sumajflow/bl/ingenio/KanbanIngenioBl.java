@@ -123,6 +123,7 @@ public class KanbanIngenioBl {
 
         // Publicar evento WebSocket
         concentradoBl.publicarEventoWebSocket(concentrado, "procesamiento_iniciado");
+        concentradoBl.publicarActualizacionKanban(concentrado);
 
         log.info("Procesamiento iniciado exitosamente para concentrado ID: {}", concentradoId);
 
@@ -249,6 +250,7 @@ public class KanbanIngenioBl {
 
         // Publicar evento WebSocket
         concentradoBl.publicarEventoWebSocket(concentrado, "kanban_actualizado");
+        concentradoBl.publicarActualizacionKanban(concentrado);
 
         log.info("Concentrado movido exitosamente de {} a {}",
                 procesoActual.getProcesoId().getNombre(),
@@ -348,6 +350,7 @@ public class KanbanIngenioBl {
 
         // Publicar evento WebSocket
         concentradoBl.publicarEventoWebSocket(concentrado, "procesamiento_completo");
+        concentradoBl.publicarActualizacionKanban(concentrado);
 
         log.info("Procesamiento finalizado exitosamente para concentrado ID: {}", concentradoId);
 
@@ -420,7 +423,7 @@ public class KanbanIngenioBl {
                 socioUsuarioId,
                 "success",
                 "Procesamiento completado",
-                "El procesamiento del concentrado " + concentrado.getCodigoConcentrado() +
+                "El procesamiento del concentrado 00" + concentrado.getId() +
                         " ha finalizado. Se espera el reporte químico.",
                 metadata
         );

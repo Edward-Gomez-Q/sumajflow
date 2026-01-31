@@ -320,24 +320,60 @@ public class ConcentradoBl {
      */
     public void publicarEventoWebSocket(Concentrado concentrado, String evento) {
         try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("evento", evento);
-            payload.put("concentradoId", concentrado.getId());
-            payload.put("codigoConcentrado", concentrado.getCodigoConcentrado());
-            payload.put("mineralPrincipal", concentrado.getMineralPrincipal());
-            payload.put("estado", concentrado.getEstado());
-            payload.put("timestamp", LocalDateTime.now().toString());
+            LocalDateTime now = LocalDateTime.now();
 
-            // Canal del ingenio
-            String canalIngenio = "/topic/ingenio/" + concentrado.getIngenioMineroId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canalIngenio, payload);
+            // ========== PAYLOAD LIGERO PARA LISTA ==========
+            Map<String, Object> payloadLigero = new HashMap<>();
+            payloadLigero.put("evento", evento);
+            payloadLigero.put("concentradoId", concentrado.getId());
+            payloadLigero.put("estado", concentrado.getEstado());
+            payloadLigero.put("timestamp", now.toString());
+            Integer socioUsuarioId = concentrado.getSocioPropietarioId().getUsuariosId().getId();
+            String destinoSocio = "/user/" + socioUsuarioId + "/queue/concentrados";
+            messagingTemplate.convertAndSend(destinoSocio, payloadLigero);
 
-            // Canal del socio
-            String canalSocio = "/topic/socio/" + concentrado.getSocioPropietarioId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canalSocio, payload);
+            log.debug("📤 WebSocket ligero enviado a socio {} (cola personal): {}", socioUsuarioId, evento);
+
+            // ========== PAYLOAD COMPLETO PARA DETALLE ==========
+            ConcentradoResponseDto dtoCompleto = convertirAResponseDto(concentrado);
+
+            Map<String, Object> payloadCompleto = new HashMap<>();
+            payloadCompleto.put("evento", evento);
+            payloadCompleto.put("timestamp", now.toString());
+            payloadCompleto.put("concentrado", dtoCompleto);
+
+            // Topic público del concentrado específico
+            String topicDetalle = "/topic/concentrado/" + concentrado.getId() + "/updates";
+            messagingTemplate.convertAndSend(topicDetalle, payloadCompleto);
+
+            log.debug("✅ WebSocket completo enviado - Evento: {}, Concentrado ID: {}", evento, concentrado.getId());
 
         } catch (Exception e) {
-            log.error("Error al publicar evento WebSocket", e);
+            log.error("❌ Error al publicar evento WebSocket para concentrado ID: {}",
+                    concentrado.getId(), e);
+        }
+    }
+
+    public void publicarActualizacionKanban(Concentrado concentrado) {
+        try {
+            // Construir DTO completo de procesos
+            ProcesosConcentradoResponseDto procesosDto = construirProcesosResponseDto(concentrado);
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("evento", "kanban_actualizado");
+            payload.put("concentradoId", concentrado.getId());
+            payload.put("timestamp", LocalDateTime.now().toString());
+            payload.put("procesos", procesosDto);
+
+            // Enviar al topic del concentrado
+            String topicDetalle = "/topic/concentrado/" + concentrado.getId() + "/updates";
+            messagingTemplate.convertAndSend(topicDetalle, payload);
+
+            log.debug("✅ Kanban WebSocket enviado - Concentrado ID: {}", concentrado.getId());
+
+        } catch (Exception e) {
+            log.error("❌ Error al publicar actualización Kanban para concentrado ID: {}",
+                    concentrado.getId(), e);
         }
     }
 
