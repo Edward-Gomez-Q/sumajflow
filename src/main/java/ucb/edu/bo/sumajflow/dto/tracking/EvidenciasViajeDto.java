@@ -55,6 +55,7 @@ public class EvidenciasViajeDto {
         private String observaciones;
         private Boolean palaOperativa;
         private Boolean mineralVisible;
+        private String fotoReferenciaUrl;
     }
 
     @Data

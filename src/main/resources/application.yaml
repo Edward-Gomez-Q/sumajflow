@@ -74,8 +74,8 @@ logging:
     root: INFO
     ucb.edu.bo.sumajflow: DEBUG
     org.springframework.web: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.SQL: OFF
+    org.hibernate.type.descriptor.sql.BasicBinder: off
 
 # ===============================
 # SERVER

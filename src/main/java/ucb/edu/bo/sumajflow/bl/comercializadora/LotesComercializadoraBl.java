@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
 import ucb.edu.bo.sumajflow.dto.comercializadora.*;
@@ -42,6 +43,7 @@ public class LotesComercializadoraBl {
     private final AuditoriaLotesBl auditoriaLotesBl;
     private final TransportistaRepository transportistaRepository;
     private final ObjectMapper objectMapper;
+    private final LotesWebSocketBl lotesWebSocketBl;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
@@ -123,7 +125,6 @@ public class LotesComercializadoraBl {
     /**
      * Aprobar lote desde la comercializadora
      */
-    @Transactional
     public LoteDetalleDto aprobarLote(
             Integer loteId,
             LoteAprobacionDestinoDto aprobacionDto,
@@ -168,15 +169,18 @@ public class LotesComercializadoraBl {
         // 5. Notificar a cooperativa y socio
         notificarAprobacion(lote, comercializadora.getRazonSocial());
 
-        log.info("Lote aprobado por comercializadora exitosamente - ID: {}", loteId);
+        LoteDetalleDto loteDto = convertToDetalleDto(lote, comercializadora);
 
-        return convertToDetalleDto(lote, comercializadora);
+        lotesWebSocketBl.publicarAprobacionDestino(lote, loteDto, usuarioId);
+
+        log.info("Lote aprobado por comercializadora - ID: {}", loteId);
+
+        return loteDto;
     }
 
     /**
      * Rechazar lote desde la comercializadora
      */
-    @Transactional
     public void rechazarLote(
             Integer loteId,
             LoteRechazoDestinoDto rechazoDto,
@@ -227,6 +231,8 @@ public class LotesComercializadoraBl {
 
         // 5. Notificar a cooperativa y socio
         notificarRechazo(lote, comercializadora.getRazonSocial(), rechazoDto.getMotivoRechazo());
+
+        lotesWebSocketBl.publicarRechazoDestino(lote, rechazoDto.getMotivoRechazo(), usuarioId);
 
         log.info("Lote rechazado por comercializadora - ID: {}", loteId);
     }

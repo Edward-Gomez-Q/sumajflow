@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
 import ucb.edu.bo.sumajflow.bl.routing.RoutingService;
@@ -37,6 +38,7 @@ public class TransporteBl {
     private final TrackingBl trackingBl;
     private final ObjectMapper objectMapper;
     private final PersonaRepository personaRepository;
+    private final LotesWebSocketBl lotesWebSocketBl;
 
     // Flujo de estados del viaje
     private static final Map<String, EstadoTransicion> FLUJO_ESTADOS = Map.ofEntries(
@@ -99,7 +101,6 @@ public class TransporteBl {
     /**
      * 1. Iniciar viaje: Esperando iniciar → En camino a la mina
      */
-    @Transactional
     public TransicionEstadoResponseDto iniciarViaje(
             Integer asignacionId,
             IniciarViajeDto dto,
@@ -110,7 +111,6 @@ public class TransporteBl {
         AsignacionCamion asignacion = obtenerYValidarAsignacion(asignacionId, usuarioId);
         validarEstadoEsperado(asignacion, "Esperando iniciar");
 
-        // Validar estado del transportista
         Transportista transportista = asignacion.getTransportistaId();
         if (!"en_ruta".equals(transportista.getEstado())) {
             throw new IllegalStateException(
@@ -139,6 +139,9 @@ public class TransporteBl {
         asignacion.setFechaInicio(ahora);
         asignacionCamionRepository.save(asignacion);
 
+        Lotes lote = asignacion.getLotesId();
+        String estadoLoteAnterior = lote.getEstado();
+
         // Operaciones asíncronas
         ejecutarOperacionesAsync(() -> {
             trackingBl.iniciarTracking(asignacionId, dto.getLat(), dto.getLng());
@@ -146,8 +149,18 @@ public class TransporteBl {
                     asignacionId, estadoAnterior, "En camino a la mina",
                     "INICIO_VIAJE", dto.getLat(), dto.getLng()
             );
-            actualizarEstadoLote(asignacion.getLotesId());
-            registrarAuditoria(asignacion.getLotesId(), estadoAnterior, "En camino a la mina",
+
+            actualizarEstadoLote(lote);
+
+            Lotes loteActualizado = lotesRepository.findById(lote.getId())
+                    .orElseThrow(() -> new RuntimeException("Lote no encontrado"));
+
+            if (!estadoLoteAnterior.equals(loteActualizado.getEstado())) {
+                log.info("🔔 Estado del lote cambió: {} -> {}", estadoLoteAnterior, loteActualizado.getEstado());
+                lotesWebSocketBl.publicarInicioTransporte(loteActualizado, asignacion.getNumeroCamion());
+            }
+
+            registrarAuditoria(lote, estadoAnterior, "En camino a la mina",
                     "INICIAR_VIAJE", "Transportista inició el viaje", asignacion);
             notificarInicioViaje(asignacion);
         });
@@ -420,7 +433,6 @@ public class TransporteBl {
     /**
      * 8. Finalizar ruta: Descargando → Completado
      */
-    @Transactional
     public TransicionEstadoResponseDto finalizarRuta(
             Integer asignacionId,
             FinalizarRutaDto dto,
@@ -456,14 +468,28 @@ public class TransporteBl {
         transportista.setViajesCompletados(transportista.getViajesCompletados() + 1);
         transportistaRepository.save(transportista);
 
+        Lotes lote = asignacion.getLotesId();
+        String estadoLoteAnterior = lote.getEstado();
+
         // Operaciones asíncronas
         ejecutarOperacionesAsync(() -> {
             trackingBl.actualizarEstadoYRegistrarEvento(
                     asignacionId, estadoAnterior, "Completado",
                     "FIN_DESCARGA", dto.getLat(), dto.getLng()
             );
-            actualizarEstadoLote(asignacion.getLotesId());
-            registrarAuditoria(asignacion.getLotesId(), estadoAnterior, "Completado",
+
+            actualizarEstadoLote(lote);
+
+            Lotes loteActualizado = lotesRepository.findById(lote.getId())
+                    .orElseThrow(() -> new RuntimeException("Lote no encontrado"));
+
+            if (!estadoLoteAnterior.equals(loteActualizado.getEstado()) &&
+                    "Transporte completo".equals(loteActualizado.getEstado())) {
+                log.info("🔔 Lote completado: {} -> {}", estadoLoteAnterior, loteActualizado.getEstado());
+                lotesWebSocketBl.publicarFinTransporte(loteActualizado, asignacion.getNumeroCamion());
+            }
+
+            registrarAuditoria(lote, estadoAnterior, "Completado",
                     "FIN_RUTA", "Viaje completado exitosamente", asignacion);
             notificarFinalizacionViaje(asignacion);
         });
@@ -780,9 +806,8 @@ public class TransporteBl {
             metadata.put("numero_camion", asignacion.getNumeroCamion());
             metadata.put("transportista_nombre", nombreTransportista);
 
-            String codigoLote = String.format("LT-%d-%04d", lote.getFechaCreacion().getYear(), lote.getId());
             String titulo = String.format("Viaje iniciado - Camión #%d", asignacion.getNumeroCamion());
-            String mensaje = String.format("%s ha iniciado el transporte del lote %s", nombreTransportista, codigoLote);
+            String mensaje = String.format("%s ha iniciado el transporte del lote %s", nombreTransportista, lote.getId().toString());
 
             notificacionBl.crearNotificacion(socioUsuarioId, "info", titulo, mensaje, metadata);
         } catch (Exception e) {
@@ -804,9 +829,8 @@ public class TransporteBl {
             metadata.put("asignacion_camion_id", asignacion.getId());
             metadata.put("numero_camion", asignacion.getNumeroCamion());
 
-            String codigoLote = String.format("LT-%d-%04d", lote.getFechaCreacion().getYear(), lote.getId());
             String titulo = "Viaje completado";
-            String mensaje = String.format("El transporte del lote %s ha sido completado exitosamente", codigoLote);
+            String mensaje = String.format("El transporte del lote %s ha sido completado exitosamente", lote.getId().toString());
 
             notificacionBl.crearNotificacion(socioUsuarioId, "success", titulo, mensaje, metadata);
         } catch (Exception e) {

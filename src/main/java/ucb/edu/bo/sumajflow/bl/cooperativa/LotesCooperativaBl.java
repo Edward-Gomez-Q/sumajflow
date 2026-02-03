@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.cooperativa.*;
 import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
@@ -45,6 +46,7 @@ public class LotesCooperativaBl {
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final AsignacionCamionRepository asignacionCamionRepo;
     private final ObjectMapper objectMapper;
+    private final LotesWebSocketBl lotesWebSocketBl;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_COOPERATIVA = "Pendiente de aprobación cooperativa";
@@ -183,7 +185,6 @@ public class LotesCooperativaBl {
     /**
      * Aprobar lote y asignar transportistas
      */
-    @Transactional
     public LoteDetalleDto aprobarLote(
             Integer loteId,
             LoteAprobacionDto aprobacionDto,
@@ -250,13 +251,18 @@ public class LotesCooperativaBl {
 
         log.info("Lote aprobado exitosamente - ID: {}", loteId);
 
-        return convertToDetalleDto(lote, cooperativa);
+        LoteDetalleDto loteDto = convertToDetalleDto(lote, cooperativa);
+
+        lotesWebSocketBl.publicarAprobacionCooperativa(lote, loteDto, usuarioId);
+
+        log.info("Lote aprobado exitosamente - ID: {}", loteId);
+
+        return loteDto;
     }
 
     /**
      * Rechazar lote
      */
-    @Transactional
     public void rechazarLote(
             Integer loteId,
             LoteRechazoDto rechazoDto,
@@ -299,6 +305,8 @@ public class LotesCooperativaBl {
 
         // 5. Notificar al socio
         notificarRechazoAlSocio(lote, rechazoDto.getMotivoRechazo());
+
+        lotesWebSocketBl.publicarRechazoCooperativa(lote, rechazoDto.getMotivoRechazo(), usuarioId);
 
         log.info("Lote rechazado - ID: {}", loteId);
     }

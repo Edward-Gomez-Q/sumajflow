@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
@@ -41,6 +42,8 @@ public class LotesIngenioBl {
     private final NotificacionBl notificacionBl;
     private final AuditoriaLotesBl auditoriaLotesBl;
     private final ObjectMapper objectMapper;
+    private final LotesWebSocketBl lotesWebSocketBl;
+    private final TransportistaRepository transportistaRepository;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
@@ -123,7 +126,6 @@ public class LotesIngenioBl {
     /**
      * Aprobar lote desde el ingenio
      */
-    @Transactional
     public LoteDetalleDto aprobarLote(
             Integer loteId,
             LoteAprobacionDestinoDto aprobacionDto,
@@ -168,15 +170,18 @@ public class LotesIngenioBl {
         // 5. Notificar a cooperativa y socio
         notificarAprobacion(lote, ingenio.getRazonSocial());
 
-        log.info("Lote aprobado por ingenio exitosamente - ID: {}", loteId);
+        LoteDetalleDto loteDto = convertToDetalleDto(lote, ingenio);
 
-        return convertToDetalleDto(lote, ingenio);
+        lotesWebSocketBl.publicarAprobacionDestino(lote, loteDto, usuarioId);
+
+        log.info("Lote aprobado por ingenio - ID: {}", loteId);
+
+        return loteDto;
     }
 
     /**
      * Rechazar lote desde el ingenio
      */
-    @Transactional
     public void rechazarLote(
             Integer loteId,
             LoteRechazoDestinoDto rechazoDto,
@@ -228,6 +233,8 @@ public class LotesIngenioBl {
         // 5. Notificar a cooperativa y socio
         notificarRechazo(lote, ingenio.getRazonSocial(), rechazoDto.getMotivoRechazo());
 
+        lotesWebSocketBl.publicarRechazoDestino(lote, rechazoDto.getMotivoRechazo(), usuarioId);
+
         log.info("Lote rechazado por ingenio - ID: {}", loteId);
     }
 
@@ -251,6 +258,9 @@ public class LotesIngenioBl {
             // Cambiar estado a "Cancelado por rechazo"
             asignacion.setEstado("Cancelado por rechazo");
             asignacionCamionRepository.save(asignacion);
+            Transportista transportista = asignacion.getTransportistaId();
+            transportista.setEstado("aprobado");
+            transportistaRepository.save(transportista);
 
             log.debug("Camión #{} actualizado de '{}' a 'Cancelado por rechazo'",
                     asignacion.getNumeroCamion(), estadoAnterior);

@@ -1288,6 +1288,7 @@ public class TrackingBl {
                 .observaciones(node.has("observaciones") ? node.get("observaciones").asText() : null)
                 .palaOperativa(node.has("pala_operativa") ? node.get("pala_operativa").asBoolean() : null)
                 .mineralVisible(node.has("mineral_visible") ? node.get("mineral_visible").asBoolean() : null)
+                .fotoReferenciaUrl(node.has("foto_referencia_url") ? node.get("foto_referencia_url").asText() : null) // ⭐ AGREGAR ESTA LÍNEA
                 .build();
     }
 

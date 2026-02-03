@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
+import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.socio.*;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -44,6 +45,7 @@ public class LotesBl {
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final AsignacionCamionRepository asignacionCamionRepository;
     private final ObjectMapper objectMapper;
+    private final LotesWebSocketBl lotesWebSocketBl;
 
     // Constantes de estados
     private static final String ESTADO_INICIAL = "Pendiente de aprobación cooperativa";
@@ -329,7 +331,6 @@ public class LotesBl {
     /**
      * Crear un nuevo lote
      */
-    @Transactional
     public LoteResponseDto createLote(
             LoteCreateDto dto,
             Integer usuarioId,
@@ -378,9 +379,14 @@ public class LotesBl {
         enviarNotificacionCreacion(usuarioId, lote, mina);
 
         log.info("Lote creado exitosamente - ID: {}", lote.getId());
-
-        // 12. Retornar DTO
-        return convertToDto(lote, minerales, destino, dto.getTipoOperacion());
+        LoteResponseDto loteResponseDto = convertToDto(
+                lote,
+                minerales,
+                destino,
+                dto.getTipoOperacion()
+        );
+        lotesWebSocketBl.publicarCreacionLote(lote,loteResponseDto);
+        return loteResponseDto;
     }
 
     // ==================== MÉTODOS DE VALIDACIÓN ====================
