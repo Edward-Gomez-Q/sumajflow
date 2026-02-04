@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class LotesBl {
+public class LotesSocioBl {
 
     // Repositorios
     private final LotesRepository lotesRepository;
@@ -127,37 +127,22 @@ public class LotesBl {
         }
 
         // Mapeo de campos comunes
-        switch (camelCase) {
-            case "fechaCreacion":
-                return "fecha_creacion";
-            case "fechaAprobacionCooperativa":
-                return "fecha_aprobacion_cooperativa";
-            case "fechaAprobacionDestino":
-                return "fecha_aprobacion_destino";
-            case "fechaInicioTransporte":
-                return "fecha_inicio_transporte";
-            case "fechaFinTransporte":
-                return "fecha_fin_transporte";
-            case "tipoOperacion":
-                return "tipo_operacion";
-            case "tipoMineral":
-                return "tipo_mineral";
-            case "pesoTotalEstimado":
-                return "peso_total_estimado";
-            case "pesoTotalReal":
-                return "peso_total_real";
-            case "camionesSolicitados":
-                return "camiones_solicitados";
-            case "minasId":
-                return "minas_id";
-            case "estado":
-                return "estado";
-            case "id":
-                return "id";
-            default:
-                // Conversión genérica: camelCase -> snake_case
-                return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
-        }
+        return switch (camelCase) {
+            case "fechaCreacion" -> "fecha_creacion";
+            case "fechaAprobacionCooperativa" -> "fecha_aprobacion_cooperativa";
+            case "fechaAprobacionDestino" -> "fecha_aprobacion_destino";
+            case "fechaInicioTransporte" -> "fecha_inicio_transporte";
+            case "fechaFinTransporte" -> "fecha_fin_transporte";
+            case "tipoOperacion" -> "tipo_operacion";
+            case "tipoMineral" -> "tipo_mineral";
+            case "pesoTotalEstimado" -> "peso_total_estimado";
+            case "pesoTotalReal" -> "peso_total_real";
+            case "camionesSolicitados" -> "camiones_solicitados";
+            case "minasId" -> "minas_id";
+            case "estado" -> "estado";
+            case "id" -> "id";
+            default -> camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+        };
     }
 
 
@@ -478,13 +463,8 @@ public class LotesBl {
                     .orElseThrow(() -> new IllegalArgumentException("Ingenio minero no encontrado"));
 
         } else { // venta_directa
-            // Debe ser una comercializadora
-            Comercializadora comercializadora = comercializadoraRepository.findById(destinoId)
+            return comercializadoraRepository.findById(destinoId)
                     .orElseThrow(() -> new IllegalArgumentException("Comercializadora no encontrada"));
-
-            // Validar que si es concentrado, solo pueda ir a comercializadora
-            // (ya validado arriba, pero doble check)
-            return comercializadora;
         }
     }
 

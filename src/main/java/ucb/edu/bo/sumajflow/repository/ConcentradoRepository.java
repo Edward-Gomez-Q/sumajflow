@@ -17,43 +17,11 @@ import java.util.Optional;
 @Repository
 public interface ConcentradoRepository extends JpaRepository<Concentrado, Integer> {
 
-  // Buscar por código
-  Optional<Concentrado> findByCodigoConcentrado(String codigoConcentrado);
-
   // Buscar por ingenio
   List<Concentrado> findByIngenioMineroIdOrderByCreatedAtDesc(IngenioMinero ingenio);
 
-  // Buscar por socio propietario
-  List<Concentrado> findBySocioPropietarioIdOrderByCreatedAtDesc(Socio socio);
-
-  // Buscar por estado
-  @Query("SELECT c FROM Concentrado c WHERE c.ingenioMineroId = :ingenio AND c.estado = :estado ORDER BY c.createdAt DESC")
-  List<Concentrado> findByIngenioAndEstado(
-          @Param("ingenio") IngenioMinero ingenio,
-          @Param("estado") String estado
-  );
 
   // Verificar si código ya existe
   @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Concentrado c WHERE c.codigoConcentrado = :codigo")
   boolean existsByCodigo(@Param("codigo") String codigo);
-
-  // Obtener concentrados activos (no completados ni vendidos)
-  @Query("SELECT c FROM Concentrado c WHERE c.ingenioMineroId = :ingenio AND c.estado NOT IN ('vendido', 'liquidado') ORDER BY c.createdAt DESC")
-  List<Concentrado> findActivosByIngenio(@Param("ingenio") IngenioMinero ingenio);
-
-  // Paginación con filtros
-  @Query("SELECT c FROM Concentrado c " +
-          "WHERE c.ingenioMineroId = :ingenio " +
-          "AND (:estado IS NULL OR c.estado = :estado) " +
-          "AND (:mineralPrincipal IS NULL OR c.mineralPrincipal = :mineralPrincipal) " +
-          "AND (CAST(:fechaDesde AS timestamp) IS NULL OR c.createdAt >= :fechaDesde) " +
-          "AND (CAST(:fechaHasta AS timestamp) IS NULL OR c.createdAt <= :fechaHasta)")
-  Page<Concentrado> findConcentradosConFiltros(
-          @Param("ingenio") IngenioMinero ingenio,
-          @Param("estado") String estado,
-          @Param("mineralPrincipal") String mineralPrincipal,
-          @Param("fechaDesde") LocalDateTime fechaDesde,
-          @Param("fechaHasta") LocalDateTime fechaHasta,
-          Pageable pageable
-  );
 }

@@ -38,11 +38,13 @@ public class ConcentradoIngenioBl {
     private final LoteProcesoPlantaRepository loteProcesoPlantaRepository;
     private final PlantaRepository plantaRepository;
 
+
     // Servicios
     private final ConcentradoBl concentradoBl;
     private final NotificacionBl notificacionBl;
     private final SimpMessagingTemplate messagingTemplate;
     private final ConcentradoMineralAnalyzer mineralAnalyzer;
+    private final LiquidacionTollBl liquidacionTollBl;
 
     // Constantes
     private static final String ESTADO_CREADO = "creado";
@@ -194,6 +196,16 @@ public class ConcentradoIngenioBl {
 
             concentradosCreados.add(concentrado);
         }
+
+        Planta planta = plantaRepository.findByIngenioMineroId(ingenio)
+                .orElseThrow(() -> new IllegalArgumentException("El ingenio no tiene planta configurada"));
+
+        Liquidacion liquidacionToll = liquidacionTollBl.crearLiquidacionToll(
+                lotes, socioPropietario, ingenio, planta.getCostoProcesamiento(), createDto
+        );
+
+        log.info("✅ Liquidación de Toll creada - ID: {}, Monto: {} BOB",
+                liquidacionToll.getId(), liquidacionToll.getValorNetoBob());
 
         // 8. Marcar lotes en planta
         lotes.forEach(lote -> {

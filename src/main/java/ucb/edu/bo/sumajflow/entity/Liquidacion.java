@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -22,7 +24,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"socioId", "cotizacionesList", "deduccionesList", "liquidacionLoteList", "liquidacionConcentradoList"})
+@ToString(exclude = { "cotizacionesList", "deduccionesList", "liquidacionLoteList", "liquidacionConcentradoList"})
 public class Liquidacion implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -36,22 +38,71 @@ public class Liquidacion implements Serializable {
     @Column(name = "tipo_liquidacion", nullable = false, length = 50)
     private String tipoLiquidacion;
 
-    @NotNull
-    @Column(name = "fecha_liquidacion", nullable = false)
-    private LocalDateTime fechaLiquidacion;
+
+    @Column(name = "peso_total_entrada", precision = 12, scale = 2)
+    private BigDecimal pesoTotalEntrada;
+
+    @Column(name = "peso_tmh", precision = 12, scale = 4)
+    private BigDecimal pesoTmh;
+
+    @Column(name = "peso_tms", precision = 12, scale = 4)
+    private BigDecimal pesoTms;
+
+    @Column(name = "peso_final_tms", precision = 12, scale = 4)
+    private BigDecimal pesoFinalTms;
+
+    @Column(name = "costo_por_tonelada", precision = 12, scale = 4)
+    private BigDecimal costoPorTonelada;
+
+    @Column(name = "costo_procesamiento_total", precision = 15, scale = 4)
+    private BigDecimal costoProcesamientoTotal;
+
+    @Column(name = "servicios_adicionales", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String serviciosAdicionales;
+
+    @Column(name = "total_servicios_adicionales", precision = 15, scale = 4)
+    @Builder.Default
+    private BigDecimal totalServiciosAdicionales = BigDecimal.ZERO;
+
+    @Column(name = "valor_bruto_usd", precision = 15, scale = 4)
+    private BigDecimal valorBrutoUsd;
+
+    @Column(name = "valor_neto_usd", precision = 15, scale = 4)
+    private BigDecimal valorNetoUsd;
+
+    @Column(name = "tipo_cambio", precision = 8, scale = 4)
+    private BigDecimal tipoCambio;
+
+    @Column(name = "valor_neto_bob", precision = 15, scale = 4)
+    private BigDecimal valorNetoBob;
 
     @Size(max = 10)
     @Column(name = "moneda", length = 10)
-    private String moneda;
+    @Builder.Default
+    private String moneda = "USD";
 
-    @Column(name = "peso_liquidado", precision = 12, scale = 2)
-    private BigDecimal pesoLiquidado;
+    @Column(name = "fecha_aprobacion")
+    private LocalDateTime fechaAprobacion;
 
-    @Column(name = "valor_bruto", precision = 15, scale = 2)
-    private BigDecimal valorBruto;
+    @Column(name = "fecha_pago")
+    private LocalDateTime fechaPago;
 
-    @Column(name = "valor_neto", precision = 15, scale = 2)
-    private BigDecimal valorNeto;
+    @Size(max = 50)
+    @Column(name = "metodo_pago", length = 50)
+    private String metodoPago;
+
+    @Size(max = 100)
+    @Column(name = "numero_comprobante", length = 100)
+    private String numeroComprobante;
+
+    @Size(max = 200)
+    @Column(name = "url_comprobante", length = 200)
+    private String urlComprobante;
+
+    @Column(name = "observaciones", columnDefinition = "text")
+    private String observaciones;
+
 
     @Size(max = 50)
     @Column(name = "estado", length = 50)
@@ -136,10 +187,13 @@ public class Liquidacion implements Serializable {
     @PrePersist
     protected void onCreate() {
         if (moneda == null) {
-            moneda = "bob";
+            moneda = "USD";
         }
         if (estado == null) {
             estado = "borrador";
+        }
+        if (totalServiciosAdicionales == null) {
+            totalServiciosAdicionales = BigDecimal.ZERO;
         }
     }
 }

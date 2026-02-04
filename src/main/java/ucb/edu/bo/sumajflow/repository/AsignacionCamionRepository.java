@@ -80,4 +80,5 @@ public interface AsignacionCamionRepository extends JpaRepository<AsignacionCami
   List<AsignacionCamion> findByTransportistaId(Transportista transportista);
 
 
+    int countByLotesId(Lotes lote);
 }

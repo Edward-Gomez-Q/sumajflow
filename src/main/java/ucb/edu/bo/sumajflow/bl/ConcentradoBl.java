@@ -13,6 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -65,7 +66,7 @@ public class ConcentradoBl {
         // Aplicar filtros
         List<Concentrado> concentradosFiltrados = concentradosBase.stream()
                 .filter(c -> aplicarFiltros(c, estado, mineralPrincipal, fechaDesde, fechaHasta))
-                .collect(Collectors.toList());
+                .toList();
 
         // Aplicar paginación
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
@@ -99,25 +100,7 @@ public class ConcentradoBl {
         if (fechaDesde != null && c.getCreatedAt().isBefore(fechaDesde)) {
             return false;
         }
-        if (fechaHasta != null && c.getCreatedAt().isAfter(fechaHasta)) {
-            return false;
-        }
-        return true;
-    }
-
-    // ==================== OBTENER DETALLE ====================
-
-    /**
-     * Obtener detalle de concentrado - Metodo genérico
-     */
-    @Transactional(readOnly = true)
-    public ConcentradoResponseDto obtenerDetalle(Integer concentradoId) {
-        log.debug("Obteniendo detalle del concentrado ID: {}", concentradoId);
-
-        Concentrado concentrado = concentradoRepository.findById(concentradoId)
-                .orElseThrow(() -> new IllegalArgumentException("Concentrado no encontrado"));
-
-        return convertirAResponseDto(concentrado);
+        return fechaHasta == null || !c.getCreatedAt().isAfter(fechaHasta);
     }
 
     /**
@@ -183,7 +166,7 @@ public class ConcentradoBl {
 
         // Minerales (del primer lote como referencia)
         if (!concentrado.getLoteConcentradoRelacionList().isEmpty()) {
-            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().get(0).getLoteComplejoId();
+            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().getFirst().getLoteComplejoId();
             List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(primerLote);
             dto.setMinerales(
                     loteMinerales.stream()
@@ -380,57 +363,6 @@ public class ConcentradoBl {
         }
     }
 
-    /**
-     * Publicar evento Kanban WebSocket
-     */
-    public void publicarEventoKanban(Concentrado concentrado, LoteProcesoPlanta proceso, String estadoAnterior) {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("evento", "etapa_actualizada");
-            payload.put("concentradoId", concentrado.getId());
-            payload.put("codigoConcentrado", concentrado.getCodigoConcentrado());
-            payload.put("procesoId", proceso.getId());
-            payload.put("procesoNombre", proceso.getProcesoId().getNombre());
-            payload.put("estadoAnterior", estadoAnterior);
-            payload.put("estadoNuevo", proceso.getEstado());
-            payload.put("orden", proceso.getOrden());
-            payload.put("timestamp", LocalDateTime.now().toString());
-
-            String canal = "/topic/ingenio/" + concentrado.getIngenioMineroId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canal, payload);
-
-            String canalSocio = "/topic/socio/" + concentrado.getSocioPropietarioId().getId() + "/concentrados";
-            messagingTemplate.convertAndSend(canalSocio, payload);
-
-        } catch (Exception e) {
-            log.error("Error al publicar evento Kanban WebSocket", e);
-        }
-    }
-
-    // ==================== VALIDACIONES COMUNES ====================
-
-    /**
-     * Validar que el concentrado está en un estado esperado
-     */
-    public void validarEstado(Concentrado concentrado, String estadoEsperado) {
-        if (!estadoEsperado.equals(concentrado.getEstado())) {
-            throw new IllegalArgumentException(
-                    "El concentrado no está en estado '" + estadoEsperado + "'. Estado actual: " + concentrado.getEstado()
-            );
-        }
-    }
-
-    /**
-     * Validar que el concentrado está en uno de varios estados esperados
-     */
-    public void validarEstadoMultiple(Concentrado concentrado, List<String> estadosEsperados) {
-        if (!estadosEsperados.contains(concentrado.getEstado())) {
-            throw new IllegalArgumentException(
-                    "El concentrado no está en un estado válido. Estado actual: " + concentrado.getEstado() +
-                            ". Estados esperados: " + String.join(", ", estadosEsperados)
-            );
-        }
-    }
 
     // ==================== CONSTRUCCIÓN DE PROCESOS DTO ====================
 

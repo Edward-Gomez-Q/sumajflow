@@ -77,11 +77,21 @@ public class Concentrado implements Serializable {
     @JdbcTypeCode(SqlTypes.JSON)
     private String observaciones;
 
-    @Column(name = "fecha_inicio")
+    @Column(name = "fecha_inicio_procesamiento")
     private LocalDateTime fechaInicio;
 
-    @Column(name = "fecha_fin")
+    @Column(name = "fecha_fin_procesamiento")
     private LocalDateTime fechaFin;
+
+    @Column(name = "peso_tmh", precision = 12, scale = 4)
+    private BigDecimal pesoTmh;
+
+    @Column(name = "peso_tms", precision = 12, scale = 4)
+    private BigDecimal pesoTms;
+
+    @Column(name = "porcentaje_merma", precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal porcentajeMerma = new BigDecimal("1.00");
 
     // Auditoría
     @CreatedDate

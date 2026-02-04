@@ -1,6 +1,7 @@
 package ucb.edu.bo.sumajflow.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -32,12 +34,20 @@ public class LiquidacionCotizacion implements Serializable {
     @Column(name = "mineral", length = 50)
     private String mineral;
 
-    @Column(name = "cotizacion_usd", precision = 15, scale = 2)
+    @Column(name = "cotizacion_usd", precision = 15, scale = 6)
     private BigDecimal cotizacionUsd;
 
-    @Size(max = 50)
-    @Column(name = "unidad", length = 50)
+    @Size(max = 20)
+    @Column(name = "unidad", length = 20)
     private String unidad;
+
+    @Size(max = 100)
+    @Column(name = "fuente", length = 100)
+    private String fuente;
+
+    @NotNull
+    @Column(name = "fecha_cotizacion", nullable = false)
+    private LocalDate fechaCotizacion;
 
     // Auditoría
     @CreatedDate

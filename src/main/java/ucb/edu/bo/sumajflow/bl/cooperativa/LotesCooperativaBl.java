@@ -67,7 +67,7 @@ public class LotesCooperativaBl {
         List<Lotes> lotes = lotesRepository.findAll().stream()
                 .filter(l -> l.getEstado().equals(ESTADO_PENDIENTE_COOPERATIVA))
                 .filter(l -> perteneceACooperativa(l, cooperativa))
-                .collect(Collectors.toList());
+                .toList();
 
         log.info("Se encontraron {} lotes pendientes", lotes.size());
 
@@ -539,37 +539,22 @@ public class LotesCooperativaBl {
         if (camelCase == null || camelCase.isEmpty()) {
             return "fecha_creacion";
         }
-        switch (camelCase) {
-            case "fechaCreacion":
-                return "fecha_creacion";
-            case "fechaAprobacionCooperativa":
-                return "fecha_aprobacion_cooperativa";
-            case "fechaAprobacionDestino":
-                return "fecha_aprobacion_destino";
-            case "fechaInicioTransporte":
-                return "fecha_inicio_transporte";
-            case "fechaFinTransporte":
-                return "fecha_fin_transporte";
-            case "tipoOperacion":
-                return "tipo_operacion";
-            case "tipoMineral":
-                return "tipo_mineral";
-            case "pesoTotalEstimado":
-                return "peso_total_estimado";
-            case "pesoTotalReal":
-                return "peso_total_real";
-            case "camionesSolicitados":
-                return "camiones_solicitados";
-            case "minasId":
-                return "minas_id";
-            case "estado":
-                return "estado";
-            case "id":
-                return "id";
-            default:
-                // Conversión genérica: convierte camelCase a snake_case
-                return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
-        }
+        return switch (camelCase) {
+            case "fechaCreacion" -> "fecha_creacion";
+            case "fechaAprobacionCooperativa" -> "fecha_aprobacion_cooperativa";
+            case "fechaAprobacionDestino" -> "fecha_aprobacion_destino";
+            case "fechaInicioTransporte" -> "fecha_inicio_transporte";
+            case "fechaFinTransporte" -> "fecha_fin_transporte";
+            case "tipoOperacion" -> "tipo_operacion";
+            case "tipoMineral" -> "tipo_mineral";
+            case "pesoTotalEstimado" -> "peso_total_estimado";
+            case "pesoTotalReal" -> "peso_total_real";
+            case "camionesSolicitados" -> "camiones_solicitados";
+            case "minasId" -> "minas_id";
+            case "estado" -> "estado";
+            case "id" -> "id";
+            default -> camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+        };
     }
 
     // ==================== MÉTODOS DE CONVERSIÓN DTO ====================

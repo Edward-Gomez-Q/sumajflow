@@ -37,16 +37,32 @@ public class ReporteQuimico implements Serializable {
     @Column(name = "numero_reporte", nullable = false, length = 100)
     private String numeroReporte;
 
+    @NotNull
+    @Size(max = 50)
+    @Column(name = "tipo_reporte", nullable = false, length = 50)
+    @Builder.Default
+    private String tipoReporte = "ingenio";
+
     @Size(max = 100)
     @Column(name = "laboratorio", length = 100)
     private String laboratorio;
+
+    @Column(name = "fecha_muestreo")
+    private LocalDate fechaMuestreo;
+
+    @Column(name = "ley_mineral_principal", precision = 8, scale = 4)
+    private BigDecimal leyMineralPrincipal;
+
+    @Column(name = "ley_ag_gmt", precision = 12, scale = 4)
+    private BigDecimal leyAgGmt;
+
+    @Column(name = "ley_ag_dm", precision = 8, scale = 4)
+    private BigDecimal leyAgDm;
 
     @NotNull
     @Column(name = "fecha_analisis", nullable = false)
     private LocalDateTime fechaAnalisis;
 
-    @Column(name = "ley_ag", precision = 8, scale = 4)
-    private BigDecimal leyAg;
 
     @Column(name = "ley_pb", precision = 8, scale = 4)
     private BigDecimal leyPb;
@@ -54,8 +70,8 @@ public class ReporteQuimico implements Serializable {
     @Column(name = "ley_zn", precision = 8, scale = 4)
     private BigDecimal leyZn;
 
-    @Column(name = "humedad", precision = 5, scale = 2)
-    private BigDecimal humedad;
+    @Column(name = "porcentaje_h2o", precision = 5, scale = 2)
+    private BigDecimal porcentajeH2o;
 
     @Size(max = 50)
     @Column(name = "tipo_analisis", length = 50)
@@ -64,6 +80,39 @@ public class ReporteQuimico implements Serializable {
     @Size(max = 200)
     @Column(name = "url_pdf", length = 200)
     private String urlPdf;
+
+    @Size(max = 20)
+    @Column(name = "unidad_traza", length = 20)
+    private String unidadTraza;
+
+    @Column(name = "observaciones_laboratorio", columnDefinition = "text")
+    private String observacionesLaboratorio;
+
+    @Size(max = 50)
+    @Column(name = "estado", length = 50)
+    @Builder.Default
+    private String estado = "pendiente";
+
+    @Column(name = "validado_por_socio")
+    @Builder.Default
+    private Boolean validadoPorSocio = false;
+
+    @Column(name = "validado_por_ingenio")
+    @Builder.Default
+    private Boolean validadoPorIngenio = false;
+
+    @Column(name = "validado_por_comercializadora")
+    @Builder.Default
+    private Boolean validadoPorComercializadora = false;
+
+    @Column(name = "fecha_validacion_socio")
+    private LocalDateTime fechaValidacionSocio;
+
+    @Column(name = "fecha_validacion_ingenio")
+    private LocalDateTime fechaValidacionIngenio;
+
+    @Column(name = "fecha_validacion_comercializadora")
+    private LocalDateTime fechaValidacionComercializadora;
 
     // Auditoría
     @CreatedDate
@@ -74,37 +123,31 @@ public class ReporteQuimico implements Serializable {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // ELIMINADO: loteId (ya no tiene relación directa con lotes)
-
-    // NUEVO: Relaciones inversas con liquidacion_lote
     @OneToMany(mappedBy = "reporteQuimicoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
 
-    // NUEVO: Relaciones inversas con liquidacion_concentrado
     @OneToMany(mappedBy = "reporteQuimicoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
 
-    // Métodos helper para liquidacion lote
-    public void addLiquidacionLote(LiquidacionLote liquidacionLote) {
-        liquidacionLoteList.add(liquidacionLote);
-        liquidacionLote.setReporteQuimicoId(this);
-    }
 
-    public void removeLiquidacionLote(LiquidacionLote liquidacionLote) {
-        liquidacionLoteList.remove(liquidacionLote);
-        liquidacionLote.setReporteQuimicoId(null);
-    }
-
-    // Métodos helper para liquidacion concentrado
-    public void addLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
-        liquidacionConcentradoList.add(liquidacionConcentrado);
-        liquidacionConcentrado.setReporteQuimicoId(this);
-    }
-
-    public void removeLiquidacionConcentrado(LiquidacionConcentrado liquidacionConcentrado) {
-        liquidacionConcentradoList.remove(liquidacionConcentrado);
-        liquidacionConcentrado.setReporteQuimicoId(null);
+    @PrePersist
+    protected void onCreate() {
+        if (tipoReporte == null) {
+            tipoReporte = "ingenio";
+        }
+        if (estado == null) {
+            estado = "pendiente";
+        }
+        if (validadoPorSocio == null) {
+            validadoPorSocio = false;
+        }
+        if (validadoPorIngenio == null) {
+            validadoPorIngenio = false;
+        }
+        if (validadoPorComercializadora == null) {
+            validadoPorComercializadora = false;
+        }
     }
 }

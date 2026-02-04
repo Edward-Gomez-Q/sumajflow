@@ -7,7 +7,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ucb.edu.bo.sumajflow.bl.socio.LotesBl;
+import ucb.edu.bo.sumajflow.bl.socio.LotesSocioBl;
 import ucb.edu.bo.sumajflow.dto.socio.LoteCreateDto;
 import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.dto.socio.LoteFiltrosDto;
@@ -28,7 +28,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class LotesController {
 
-    private final LotesBl lotesBl;
+    private final LotesSocioBl lotesBl;
     private final JwtUtil jwtUtil;
 
     @GetMapping

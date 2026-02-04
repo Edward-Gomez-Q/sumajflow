@@ -22,4 +22,11 @@ public class ConcentradoCreateDto {
 
     @Size(max = 500, message = "Las observaciones no pueden exceder 500 caracteres")
     private String observacionesIniciales;
+
+    @NotNull(message = "El tipo de cambio es requerido")
+    @DecimalMin(value = "0.01", message = "El tipo de cambio debe ser mayor a 0")
+    private BigDecimal tipoCambio;
+
+    private Integer cantidadRetroexcavadoraGrande;
+    private Integer cantidadRetroexcavadoraPequena;
 }

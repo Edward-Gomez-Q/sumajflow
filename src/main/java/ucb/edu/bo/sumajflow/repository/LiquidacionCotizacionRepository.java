@@ -8,9 +8,4 @@ import java.util.List;
 
 public interface LiquidacionCotizacionRepository extends JpaRepository<LiquidacionCotizacion, Integer> {
 
-  // Buscar por liquidación
-  List<LiquidacionCotizacion> findByLiquidacionId(Liquidacion liquidacion);
-
-  // Eliminar todas las cotizaciones de una liquidación
-  void deleteByLiquidacionId(Liquidacion liquidacion);
 }

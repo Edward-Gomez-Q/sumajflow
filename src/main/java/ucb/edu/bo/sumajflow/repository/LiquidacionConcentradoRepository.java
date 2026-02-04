@@ -12,27 +12,4 @@ import java.util.Optional;
 
 public interface LiquidacionConcentradoRepository extends JpaRepository<LiquidacionConcentrado, Integer> {
 
-
-    
-    // Buscar por liquidación
-    List<LiquidacionConcentrado> findByLiquidacionId(Liquidacion liquidacion);
-
-    // Buscar por concentrado
-    List<LiquidacionConcentrado> findByConcentradoId(Concentrado concentrado);
-
-    // Verificar si un concentrado ya tiene liquidación de venta
-    @Query("SELECT CASE WHEN COUNT(lc) > 0 THEN true ELSE false END " +
-            "FROM LiquidacionConcentrado lc " +
-            "JOIN lc.liquidacionId l " +
-            "WHERE lc.concentradoId = :concentrado " +
-            "AND l.tipoLiquidacion = 'venta_concentrado'")
-    boolean concentradoYaTieneLiquidacionVenta(@Param("concentrado") Concentrado concentrado);
-
-    // Verificar si un concentrado ya tiene liquidación de cobro ingenio
-    @Query("SELECT CASE WHEN COUNT(lc) > 0 THEN true ELSE false END " +
-            "FROM LiquidacionConcentrado lc " +
-            "JOIN lc.liquidacionId l " +
-            "WHERE lc.concentradoId = :concentrado " +
-            "AND l.tipoLiquidacion = 'cobro_ingenio'")
-    boolean concentradoYaTieneLiquidacionIngenio(@Param("concentrado") Concentrado concentrado);
 }

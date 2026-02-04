@@ -33,16 +33,40 @@ public class LiquidacionDeduccion implements Serializable {
     @Column(name = "concepto", length = 100)
     private String concepto;
 
-    @Column(name = "monto", precision = 15, scale = 2)
+    @Column(name = "monto_fijo", precision = 15, scale = 4)
     private BigDecimal monto;
 
-    @Column(name = "porcentaje", precision = 5, scale = 2)
+    @Column(name = "porcentaje", precision = 5, scale = 4)
     private BigDecimal porcentaje;
 
     @NotNull
     @Size(min = 1, max = 50)
     @Column(name = "tipo_deduccion", nullable = false, length = 50)
     private String tipoDeduccion;
+
+    @Size(max = 200)
+    @Column(name = "descripcion", length = 200)
+    private String descripcion;
+
+    @NotNull
+    @Column(name = "monto_deducido", nullable = false, precision = 15, scale = 4)
+    private BigDecimal montoDeducido;
+
+    @NotNull
+    @Size(max = 50)
+    @Column(name = "base_calculo", nullable = false, length = 50)
+    @Builder.Default
+    private String baseCalculo = "valor_bruto";
+
+    @NotNull
+    @Column(name = "orden", nullable = false)
+    @Builder.Default
+    private Integer orden = 0;
+
+    @Size(max = 10)
+    @Column(name = "moneda", length = 10)
+    @Builder.Default
+    private String moneda = "USD";
 
     // Auditoría
     @CreatedDate

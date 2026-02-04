@@ -1,12 +1,14 @@
 package ucb.edu.bo.sumajflow.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -25,6 +27,13 @@ public class LiquidacionLote implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
+
+    @NotNull
+    @Column(name = "peso_entrada", nullable = false, precision = 12, scale = 2)
+    private BigDecimal pesoEntrada;
+
+    @Column(name = "peso_salida", precision = 12, scale = 2)
+    private BigDecimal pesoSalida;
 
     // Auditoría
     @CreatedDate
