@@ -11,8 +11,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
+import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
 import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollIngenioBl;
+import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
@@ -45,6 +48,7 @@ public class LotesSocioBl {
     private final AuditoriaLotesRepository auditoriaLotesRepository;
     private final AsignacionCamionRepository asignacionCamionRepository;
     private final ObjectMapper objectMapper;
+    private final LiquidacionTollBl liquidacionTollBl;
     private final LotesWebSocketBl lotesWebSocketBl;
 
     // Constantes de estados
@@ -287,6 +291,10 @@ public class LotesSocioBl {
                 ))
                 .collect(Collectors.toList());
         dto.setHistorialCambios(auditoriasDto);
+
+
+        LiquidacionTollResponseDto liquidacionToll = liquidacionTollBl.buscarLiquidacionPorLote(lote.getId());
+        dto.setLiquidacionToll(liquidacionToll);
 
         dto.setCreatedAt(lote.getFechaCreacion());
         dto.setUpdatedAt(lote.getUpdatedAt());

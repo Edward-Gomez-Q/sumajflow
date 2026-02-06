@@ -11,6 +11,5 @@ import java.util.List;
 import java.util.Optional;
 
 public interface LiquidacionLoteRepository extends JpaRepository<LiquidacionLote, Integer> {
-    List<LiquidacionLote> findByLiquidacionId(Liquidacion liquidacion);
-
+   List<LiquidacionLote> findByLotesId(Lotes lote);
 }

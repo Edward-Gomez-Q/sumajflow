@@ -6,11 +6,13 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
+import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +38,8 @@ public class KanbanIngenioBl {
     private final ConcentradoBl concentradoBl;
     private final NotificacionBl notificacionBl;
     private final SimpMessagingTemplate messagingTemplate;
+    private final LiquidacionTollBl liquidacionTollBl;
+    private final LotesRepository lotesRepository;
 
     // ==================== OBTENER PROCESOS ====================
 
@@ -262,8 +266,9 @@ public class KanbanIngenioBl {
 
     /**
      * Finalizar procesamiento: completar el último proceso
-     * Estado: en_proceso → esperando_reporte_quimico
+     * Estado: en_proceso → esperando_pago
      */
+    @Transactional
     public ProcesosConcentradoResponseDto finalizarProcesamiento(
             Integer concentradoId,
             ProcesoFinalizarDto finalizarDto,
@@ -296,9 +301,49 @@ public class KanbanIngenioBl {
             throw new IllegalArgumentException("El último proceso debe estar en curso para finalizar");
         }
 
-        // Completar el último proceso
+        // ========== VALIDACIONES ADICIONALES ==========
+
+        // Validar que peso TMS no sea mayor que peso TMH
+        if (finalizarDto.getPesoTms().compareTo(finalizarDto.getPesoTmh()) > 0) {
+            throw new IllegalArgumentException("El peso TMS no puede ser mayor al peso TMH");
+        }
+
+        // ========== ACTUALIZAR DATOS DEL CONCENTRADO ==========
+
+        // 1. Asignar pesos recibidos
+        concentrado.setPesoTmh(finalizarDto.getPesoTmh());
+        concentrado.setPesoTms(finalizarDto.getPesoTms());
+        concentrado.setNumeroSacos(finalizarDto.getNumeroSacos());
+
+        // 2. Establecer fecha de fin
+        LocalDateTime fechaFin = LocalDateTime.now();
+        concentrado.setFechaFin(fechaFin);
+
+        // 3. Calcular merma: merma = porcentaje_merma * peso_tms
+        BigDecimal porcentajeMerma = concentrado.getPorcentajeMerma() != null
+                ? concentrado.getPorcentajeMerma()
+                : new BigDecimal("1.00");
+
+        BigDecimal merma = finalizarDto.getPesoTms()
+                .multiply(porcentajeMerma)
+                .divide(new BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP);
+
+        concentrado.setMerma(merma);
+
+        // 4. Calcular peso final: peso_final = peso_tms - merma
+        BigDecimal pesoFinal = finalizarDto.getPesoTms().subtract(merma);
+        concentrado.setPesoFinal(pesoFinal);
+
+        log.info("📊 Cálculos completados - TMS: {}, Merma: {}%, Merma calculada: {}, Peso Final: {}",
+                finalizarDto.getPesoTms(), porcentajeMerma, merma, pesoFinal);
+
+        // Guardar concentrado con los nuevos datos
+        concentradoRepository.save(concentrado);
+
+        // ========== COMPLETAR EL ÚLTIMO PROCESO ==========
+
         ultimoProceso.setEstado("completado");
-        ultimoProceso.setFechaFin(LocalDateTime.now());
+        ultimoProceso.setFechaFin(fechaFin);
 
         // Agregar observaciones de fin
         String obsActuales = ultimoProceso.getObservaciones();
@@ -312,17 +357,19 @@ public class KanbanIngenioBl {
         }
         loteProcesoPlantaRepository.save(ultimoProceso);
 
-        // Cambiar estado del concentrado
+        // ========== CAMBIAR ESTADO DEL CONCENTRADO ==========
+
         concentradoBl.transicionarEstado(
                 concentrado,
-                "esperando_reporte_quimico",
-                "Procesamiento completado. Esperando reporte químico.",
+                "esperando_pago",
+                "Procesamiento completado.",
                 null,
                 usuarioId,
                 ipOrigen
         );
 
-        // Guardar observaciones en JSONB del concentrado
+        // ========== GUARDAR OBSERVACIONES EN JSONB ==========
+
         Map<String, Object> detalles = new HashMap<>();
         detalles.put("ultimo_proceso", Map.of(
                 "id", ultimoProceso.getId(),
@@ -335,6 +382,16 @@ public class KanbanIngenioBl {
                 finalizarDto.getObservacionesGenerales() : "");
         detalles.put("total_procesos_completados", todosProcesos.size());
 
+        // Agregar datos calculados
+        detalles.put("pesos_finales", Map.of(
+                "peso_tmh", finalizarDto.getPesoTmh(),
+                "peso_tms", finalizarDto.getPesoTms(),
+                "numero_sacos", finalizarDto.getNumeroSacos(),
+                "porcentaje_merma", porcentajeMerma,
+                "merma_calculada", merma,
+                "peso_final", pesoFinal
+        ));
+
         guardarObservacionesEnConcentrado(
                 concentrado,
                 "FINALIZAR_PROCESAMIENTO",
@@ -343,16 +400,52 @@ public class KanbanIngenioBl {
                 ipOrigen
         );
 
-        // Notificar al socio propietario
+        // ========== ACTIVAR LIQUIDACIÓN Y MARCAR LOTES ==========
+
+        List<Lotes> lotes = concentrado.getLoteConcentradoRelacionList().stream()
+                .map(LoteConcentradoRelacion::getLoteComplejoId)
+                .collect(Collectors.toList());
+
+        try {
+            liquidacionTollBl.activarLiquidacionParaPago(lotes);
+            log.info("✅ Liquidación de Toll activada para pago - Concentrado ID: {}", concentradoId);
+        } catch (Exception e) {
+            log.error("❌ Error al activar liquidación de Toll", e);
+        }
+
+        verificarYMarcarLotesProcesados(lotes);
+
+        // ========== NOTIFICAR AL SOCIO PROPIETARIO ==========
+
         notificarProcesamientoCompleto(concentrado);
 
-        // Publicar evento WebSocket
+        // ========== PUBLICAR EVENTOS WEBSOCKET ==========
+
         concentradoBl.publicarEventoWebSocket(concentrado, "procesamiento_completo");
         concentradoBl.publicarActualizacionKanban(concentrado);
 
-        log.info("Procesamiento finalizado exitosamente para concentrado ID: {}", concentradoId);
+        log.info("✅ Procesamiento finalizado exitosamente para concentrado ID: {}", concentradoId);
 
         return concentradoBl.construirProcesosResponseDto(concentrado);
+    }
+
+    private void verificarYMarcarLotesProcesados(List<Lotes> lotes) {
+        for (Lotes lote : lotes) {
+            List<Concentrado> concentradosDelLote = lote.getLoteConcentradoRelacionList().stream()
+                    .map(LoteConcentradoRelacion::getConcentradoId)
+                    .toList();
+
+            boolean todosTerminaron = concentradosDelLote.stream()
+                    .allMatch(c -> "esperando_pago".equals(c.getEstado()) ||
+                            "listo_para_venta".equals(c.getEstado()) ||
+                            "vendido".equals(c.getEstado()));
+
+            if (todosTerminaron && !"Procesado".equals(lote.getEstado())) {
+                lote.setEstado("Procesado");
+                lotesRepository.save(lote);
+                log.info("✅ Lote ID: {} marcado como Procesado", lote.getId());
+            }
+        }
     }
 
     // ==================== MÉTODOS AUXILIARES ====================

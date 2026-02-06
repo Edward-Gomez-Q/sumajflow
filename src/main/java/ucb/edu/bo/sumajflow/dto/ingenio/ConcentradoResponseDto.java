@@ -58,4 +58,5 @@ public class ConcentradoResponseDto {
 
     // Observaciones
     private List<Map<String, Object>> observaciones;
+    private LiquidacionTollResponseDto liquidacionToll;
 }

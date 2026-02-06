@@ -19,7 +19,8 @@ public interface ConcentradoRepository extends JpaRepository<Concentrado, Intege
 
   // Buscar por ingenio
   List<Concentrado> findByIngenioMineroIdOrderByCreatedAtDesc(IngenioMinero ingenio);
-
+  // Buscar por socio propietario
+  List<Concentrado> findBySocioPropietarioIdOrderByCreatedAtDesc(Socio socio);
 
   // Verificar si código ya existe
   @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Concentrado c WHERE c.codigoConcentrado = :codigo")

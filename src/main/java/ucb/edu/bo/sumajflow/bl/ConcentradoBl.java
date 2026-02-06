@@ -13,7 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollBl;
+import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollIngenioBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -44,6 +44,7 @@ public class ConcentradoBl {
     protected final LoteProcesoPlantaRepository loteProcesoPlantaRepository;
     protected final ObjectMapper objectMapper;
     protected final SimpMessagingTemplate messagingTemplate;
+    private final LiquidacionTollBl liquidacionTollBl;
 
     // ==================== LISTAR CONCENTRADOS (GENÉRICO) ====================
 
@@ -195,6 +196,13 @@ public class ConcentradoBl {
             log.warn("Error al parsear observaciones del concentrado ID: {}", concentrado.getId());
             dto.setObservaciones(null);
         }
+
+        LiquidacionTollResponseDto liquidacionToll = null;
+        if (!concentrado.getLoteConcentradoRelacionList().isEmpty()) {
+            Integer primerLoteId = concentrado.getLoteConcentradoRelacionList().getFirst().getLoteComplejoId().getId();
+            liquidacionToll = liquidacionTollBl.buscarLiquidacionPorLote(primerLoteId);
+        }
+        dto.setLiquidacionToll(liquidacionToll);
 
         return dto;
     }

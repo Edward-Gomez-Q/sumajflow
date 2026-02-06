@@ -4,6 +4,7 @@ package ucb.edu.bo.sumajflow.dto.socio;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -66,4 +67,6 @@ public class LoteDetalleDto {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private LiquidacionTollResponseDto liquidacionToll;
 }

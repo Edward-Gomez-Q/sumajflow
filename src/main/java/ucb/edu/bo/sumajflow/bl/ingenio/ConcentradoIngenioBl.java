@@ -6,7 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
 import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
@@ -44,7 +43,8 @@ public class ConcentradoIngenioBl {
     private final NotificacionBl notificacionBl;
     private final SimpMessagingTemplate messagingTemplate;
     private final ConcentradoMineralAnalyzer mineralAnalyzer;
-    private final LiquidacionTollBl liquidacionTollBl;
+    private final LiquidacionTollIngenioBl liquidacionTollBl;
+
 
     // Constantes
     private static final String ESTADO_CREADO = "creado";
@@ -168,7 +168,7 @@ public class ConcentradoIngenioBl {
         validarPesoMinimoPlanta(lotes, ingenio);
 
         // 4. Socio propietario
-        Socio socioPropietario = lotes.get(0).getMinasId().getSocioId();
+        Socio socioPropietario = lotes.getFirst().getMinasId().getSocioId();
 
         // 5. Minerales del batch
         BatchMineralContext ctx = construirContextoMineralesBatch(lotes);
@@ -201,7 +201,7 @@ public class ConcentradoIngenioBl {
                 .orElseThrow(() -> new IllegalArgumentException("El ingenio no tiene planta configurada"));
 
         Liquidacion liquidacionToll = liquidacionTollBl.crearLiquidacionToll(
-                lotes, socioPropietario, ingenio, planta.getCostoProcesamiento(), createDto
+                lotes, socioPropietario, ingenio, planta.getCostoProcesamiento(), createDto, usuarioId
         );
 
         log.info("✅ Liquidación de Toll creada - ID: {}, Monto: {} BOB",
@@ -281,7 +281,6 @@ public class ConcentradoIngenioBl {
                 .loteOrigenMultiple(esMultiple)
                 .estado(ESTADO_CREADO)
                 .observaciones(concentradoBl.convertirHistorialAJson(historial))
-                .fechaInicio(LocalDateTime.now())
                 .build();
 
         concentrado = concentradoRepository.save(concentrado);
@@ -329,32 +328,23 @@ public class ConcentradoIngenioBl {
             Boolean esMultiple,
             BatchMineralContext ctx
     ) {
-        BigDecimal total = BigDecimal.ZERO;
+        // Calcular peso total de todos los lotes en kg
+        BigDecimal pesoTotalKg = BigDecimal.ZERO;
 
         for (Lotes lote : lotes) {
             BigDecimal pesoLote = (lote.getPesoTotalReal() != null) ? lote.getPesoTotalReal() : BigDecimal.ZERO;
-            Set<String> m = ctx.mineralesPorLote().getOrDefault(lote.getId(), Set.of());
-
-            if (!loteAportaAMineral(m, mineralPrincipal)) {
-                continue;
-            }
-
-            BigDecimal aporte = pesoLote;
-
-            if (Boolean.TRUE.equals(esMultiple) && loteEsMixtoZnPb(m) &&
-                    (ZINC.equals(mineralPrincipal) || PLOMO.equals(mineralPrincipal))) {
-                aporte = pesoLote.multiply(BigDecimal.valueOf(50))
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            }
-
-            total = total.add(aporte);
+            pesoTotalKg = pesoTotalKg.add(pesoLote);
         }
 
-        if (total.compareTo(BigDecimal.ZERO) == 0 && createDto.getPesoInicial() != null) {
-            total = createDto.getPesoInicial();
+        // Si no hay peso en los lotes, usar el peso del DTO
+        if (pesoTotalKg.compareTo(BigDecimal.ZERO) == 0 && createDto.getPesoInicial() != null) {
+            pesoTotalKg = createDto.getPesoInicial();
         }
 
-        return total.setScale(2, RoundingMode.HALF_UP);
+        // Convertir de kilogramos a toneladas (dividir entre 1000)
+        BigDecimal pesoToneladas = pesoTotalKg.divide(BigDecimal.valueOf(1000), 2, RoundingMode.HALF_UP);
+
+        return pesoToneladas.setScale(2, RoundingMode.HALF_UP);
     }
 
     private record BatchMineralContext(
@@ -431,7 +421,7 @@ public class ConcentradoIngenioBl {
             lotes.add(lote);
         }
 
-        Socio primerSocio = lotes.get(0).getMinasId().getSocioId();
+        Socio primerSocio = lotes.getFirst().getMinasId().getSocioId();
         boolean todosDelMismoSocio = lotes.stream()
                 .allMatch(l -> l.getMinasId().getSocioId().getId().equals(primerSocio.getId()));
 
@@ -482,18 +472,14 @@ public class ConcentradoIngenioBl {
             }
 
             BigDecimal pesoLote = (lote.getPesoTotalReal() != null) ? lote.getPesoTotalReal() : BigDecimal.ZERO;
-            BigDecimal pesoEntrada = pesoLote;
 
-            if (Boolean.TRUE.equals(esMultiple) && loteEsMixtoZnPb(m) &&
-                    (ZINC.equals(mineralPrincipal) || PLOMO.equals(mineralPrincipal))) {
-                pesoEntrada = pesoLote.multiply(BigDecimal.valueOf(50))
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            }
+            // Convertir de kg a toneladas SIN dividir (peso completo)
+            BigDecimal pesoEntradaTon = pesoLote.divide(BigDecimal.valueOf(1000), 2, RoundingMode.HALF_UP);
 
             LoteConcentradoRelacion relacion = LoteConcentradoRelacion.builder()
                     .loteComplejoId(lote)
                     .concentradoId(concentrado)
-                    .pesoEntrada(pesoEntrada.setScale(2, RoundingMode.HALF_UP))
+                    .pesoEntrada(pesoEntradaTon.setScale(2, RoundingMode.HALF_UP))
                     .fechaCreacion(LocalDateTime.now())
                     .build();
 
@@ -506,7 +492,6 @@ public class ConcentradoIngenioBl {
             throw new IllegalStateException("No hay lotes compatibles para el concentrado " + mineralPrincipal);
         }
     }
-
     private boolean loteAportaAMineral(Set<String> mineralesLote, String mineralPrincipal) {
         if (mineralesLote == null || mineralesLote.isEmpty()) return false;
 

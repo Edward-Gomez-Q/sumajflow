@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
 import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
@@ -44,6 +45,7 @@ public class LotesIngenioBl {
     private final ObjectMapper objectMapper;
     private final LotesWebSocketBl lotesWebSocketBl;
     private final TransportistaRepository transportistaRepository;
+    private final LiquidacionTollBl liquidacionTollBl;
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
@@ -546,6 +548,9 @@ public class LotesIngenioBl {
                 ))
                 .collect(Collectors.toList());
         dto.setHistorialCambios(auditoriasDto);
+
+        LiquidacionTollResponseDto liquidacionToll = liquidacionTollBl.buscarLiquidacionPorLote(lote.getId());
+        dto.setLiquidacionToll(liquidacionToll);
 
         dto.setCreatedAt(lote.getFechaCreacion());
         dto.setUpdatedAt(lote.getUpdatedAt());
