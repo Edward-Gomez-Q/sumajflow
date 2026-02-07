@@ -25,4 +25,7 @@ public interface ConcentradoRepository extends JpaRepository<Concentrado, Intege
   // Verificar si código ya existe
   @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Concentrado c WHERE c.codigoConcentrado = :codigo")
   boolean existsByCodigo(@Param("codigo") String codigo);
+  List<Concentrado> findBySocioPropietarioIdAndEstado(Socio socio, String estado);
+
+
 }

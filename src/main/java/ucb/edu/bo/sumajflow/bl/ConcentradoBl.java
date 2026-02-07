@@ -347,6 +347,28 @@ public class ConcentradoBl {
                     concentrado.getId(), e);
         }
     }
+    public void publicarEventoWebSocketIngenio(Concentrado concentrado, String evento) {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("evento", evento);
+            payload.put("concentradoId", concentrado.getId());
+            payload.put("estado", evento);
+            payload.put("timestamp", now.toString());
+
+            messagingTemplate.convertAndSendToUser(
+                    concentrado.getIngenioMineroId().getUsuariosId().getId().toString(),
+                    "/queue/concentrados",
+                    payload
+            );
+
+            log.debug("📤 WebSocket enviado a ingenio {}: {}", concentrado.getIngenioMineroId().getRazonSocial(), evento);
+
+        } catch (Exception e) {
+            log.error("❌ Error al publicar evento WebSocket para ingenio ID: {}",
+                    concentrado.getIngenioMineroId().getId(), e);
+        }
+    }
 
     public void publicarActualizacionKanban(Concentrado concentrado) {
         try {

@@ -38,7 +38,7 @@ public class KanbanIngenioBl {
     private final ConcentradoBl concentradoBl;
     private final NotificacionBl notificacionBl;
     private final SimpMessagingTemplate messagingTemplate;
-    private final LiquidacionTollBl liquidacionTollBl;
+    private final LiquidacionTollIngenioBl liquidacionTollBl;
     private final LotesRepository lotesRepository;
 
     // ==================== OBTENER PROCESOS ====================
@@ -268,7 +268,6 @@ public class KanbanIngenioBl {
      * Finalizar procesamiento: completar el último proceso
      * Estado: en_proceso → esperando_pago
      */
-    @Transactional
     public ProcesosConcentradoResponseDto finalizarProcesamiento(
             Integer concentradoId,
             ProcesoFinalizarDto finalizarDto,
@@ -359,9 +358,13 @@ public class KanbanIngenioBl {
 
         // ========== CAMBIAR ESTADO DEL CONCENTRADO ==========
 
+        //Validar si la liquidacion de Toll ya fue pagada en el otro concentrado del mismo lote, si es así, marcar como listo_para_venta, sino esperar a pago
+        boolean liquidacionPagada = liquidacionTollBl.verificarLiquidacionPagadaEnConcentradosDelMismoLote(concentrado);
+        String nuevoEstado = liquidacionPagada ? "listo_para_venta" : "esperando_pago";
+
         concentradoBl.transicionarEstado(
                 concentrado,
-                "esperando_pago",
+                nuevoEstado,
                 "Procesamiento completado.",
                 null,
                 usuarioId,
@@ -407,7 +410,7 @@ public class KanbanIngenioBl {
                 .collect(Collectors.toList());
 
         try {
-            liquidacionTollBl.activarLiquidacionParaPago(lotes);
+            liquidacionTollBl.activarLiquidacionParaPago(lotes, usuarioId);
             log.info("✅ Liquidación de Toll activada para pago - Concentrado ID: {}", concentradoId);
         } catch (Exception e) {
             log.error("❌ Error al activar liquidación de Toll", e);
@@ -515,7 +518,7 @@ public class KanbanIngenioBl {
                 "success",
                 "Procesamiento completado",
                 "El procesamiento del concentrado 00" + concentrado.getId() +
-                        " ha finalizado. Se espera el reporte químico.",
+                        " ha finalizado.",
                 metadata
         );
     }

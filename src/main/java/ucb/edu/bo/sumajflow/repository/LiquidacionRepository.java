@@ -3,6 +3,7 @@ package ucb.edu.bo.sumajflow.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import ucb.edu.bo.sumajflow.entity.Comercializadora;
 import ucb.edu.bo.sumajflow.entity.Liquidacion;
 import ucb.edu.bo.sumajflow.entity.Socio;
 
@@ -14,4 +15,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Intege
     List<Liquidacion> findBySocioIdOrderByCreatedAtDesc(Socio socio);
     List<Liquidacion> findBySocioIdAndTipoLiquidacionOrderByCreatedAtDesc(Socio socio, String tipoLiquidacion);
     List<Liquidacion> findByTipoLiquidacionOrderByCreatedAtDesc(String tipoLiquidacion);
-   }
+    List<Liquidacion> findBySocioIdAndTipoLiquidacionInOrderByCreatedAtDesc(Socio socio, List<String> tiposLiquidacion);
+    List<Liquidacion> findByComercializadoraIdAndTipoLiquidacionInOrderByCreatedAtDesc(Comercializadora comercializadora, List<String> tiposLiquidacion);
+
+}

@@ -38,7 +38,6 @@ public class Liquidacion implements Serializable {
     @Column(name = "tipo_liquidacion", nullable = false, length = 50)
     private String tipoLiquidacion;
 
-
     @Column(name = "peso_total_entrada", precision = 12, scale = 2)
     private BigDecimal pesoTotalEntrada;
 
@@ -103,7 +102,6 @@ public class Liquidacion implements Serializable {
     @Column(name = "observaciones", columnDefinition = "text")
     private String observaciones;
 
-
     @Size(max = 50)
     @Column(name = "estado", length = 50)
     private String estado;
@@ -122,12 +120,15 @@ public class Liquidacion implements Serializable {
     @JoinColumn(name = "socio_id", nullable = false)
     private Socio socioId;
 
-    // CAMBIO: Relación con lotes ahora es a través de tabla intermedia (N:M)
+    // NUEVO: Relación con comercializadora (nullable - solo para ventas)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "comercializadora_id")
+    private Comercializadora comercializadoraId;
+
     @OneToMany(mappedBy = "liquidacionId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
 
-    // NUEVO: Relación con concentrados a través de tabla intermedia (N:M)
     @OneToMany(mappedBy = "liquidacionId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();

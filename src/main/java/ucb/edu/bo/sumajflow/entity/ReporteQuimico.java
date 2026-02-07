@@ -10,7 +10,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,87 +33,104 @@ public class ReporteQuimico implements Serializable {
 
     @NotNull
     @Size(min = 1, max = 100)
-    @Column(name = "numero_reporte", nullable = false, length = 100)
+    @Column(name = "numero_reporte", nullable = false, length = 100, unique = true)
     private String numeroReporte;
 
+    // Tipo de quien subió el reporte
     @NotNull
     @Size(max = 50)
     @Column(name = "tipo_reporte", nullable = false, length = 50)
     @Builder.Default
-    private String tipoReporte = "ingenio";
+    private String tipoReporte = "socio"; // socio | comercializadora
+
+    // Tipo de venta (determina qué campos son obligatorios)
+    @NotNull
+    @Size(max = 50)
+    @Column(name = "tipo_venta", nullable = false, length = 50)
+    private String tipoVenta; // venta_concentrado | venta_lote_complejo
 
     @Size(max = 100)
     @Column(name = "laboratorio", length = 100)
     private String laboratorio;
 
-    @Column(name = "fecha_muestreo")
-    private LocalDate fechaMuestreo;
+    // ===== FECHAS =====
+    @Column(name = "fecha_empaquetado")
+    private LocalDateTime fechaEmpaquetado;
 
-    @Column(name = "ley_mineral_principal", precision = 8, scale = 4)
-    private BigDecimal leyMineralPrincipal;
+    @Column(name = "fecha_recepcion_laboratorio")
+    private LocalDateTime fechaRecepcionLaboratorio;
 
-    @Column(name = "ley_ag_gmt", precision = 12, scale = 4)
-    private BigDecimal leyAgGmt;
-
-    @Column(name = "ley_ag_dm", precision = 8, scale = 4)
-    private BigDecimal leyAgDm;
+    @Column(name = "fecha_salida_laboratorio")
+    private LocalDateTime fechaSalidaLaboratorio;
 
     @NotNull
     @Column(name = "fecha_analisis", nullable = false)
     private LocalDateTime fechaAnalisis;
 
+    // ===== LEYES DE MINERALES =====
 
+    // SOLO para venta_concentrado
+    @Column(name = "ley_mineral_principal", precision = 8, scale = 4)
+    private BigDecimal leyMineralPrincipal;
+
+    // PLATA - diferentes unidades según tipo_venta
+    @Column(name = "ley_ag_gmt", precision = 12, scale = 4)
+    private BigDecimal leyAgGmt; // g/MT - SOLO venta_concentrado
+
+    @Column(name = "ley_ag_dm", precision = 8, scale = 4)
+    private BigDecimal leyAgDm; // DM - SOLO venta_lote_complejo
+
+    // METALES BASE
     @Column(name = "ley_pb", precision = 8, scale = 4)
-    private BigDecimal leyPb;
+    private BigDecimal leyPb; // Plomo - AMBOS tipos
 
     @Column(name = "ley_zn", precision = 8, scale = 4)
-    private BigDecimal leyZn;
+    private BigDecimal leyZn; // Zinc - SOLO venta_lote_complejo
 
+    // HUMEDAD - SOLO venta_concentrado
     @Column(name = "porcentaje_h2o", precision = 5, scale = 2)
     private BigDecimal porcentajeH2o;
 
-    @Size(max = 50)
-    @Column(name = "tipo_analisis", length = 50)
-    private String tipoAnalisis;
-
+    // ===== DOCUMENTACIÓN =====
     @Size(max = 200)
     @Column(name = "url_pdf", length = 200)
     private String urlPdf;
 
-    @Size(max = 20)
-    @Column(name = "unidad_traza", length = 20)
-    private String unidadTraza;
-
     @Column(name = "observaciones_laboratorio", columnDefinition = "text")
     private String observacionesLaboratorio;
 
+    // ===== CARACTERÍSTICAS EMPAQUETADO (solo venta_concentrado) =====
+    @Column(name = "numero_sacos")
+    private Integer numeroSacos;
+
+    @Column(name = "peso_por_saco", precision = 10, scale = 3)
+    private BigDecimal pesoPorSaco;
+
+    @Size(max = 100)
+    @Column(name = "tipo_empaque", length = 100)
+    private String tipoEmpaque;
+
+    // ===== VALIDACIONES =====
     @Size(max = 50)
     @Column(name = "estado", length = 50)
     @Builder.Default
     private String estado = "pendiente";
 
-    @Column(name = "validado_por_socio")
+    @Column(name = "subido_por_socio")
     @Builder.Default
-    private Boolean validadoPorSocio = false;
+    private Boolean subidoPorSocio = false;
 
-    @Column(name = "validado_por_ingenio")
+    @Column(name = "subido_por_comercializadora")
     @Builder.Default
-    private Boolean validadoPorIngenio = false;
+    private Boolean subidoPorComercializadora = false;
 
-    @Column(name = "validado_por_comercializadora")
-    @Builder.Default
-    private Boolean validadoPorComercializadora = false;
+    @Column(name = "fecha_subida_socio")
+    private LocalDateTime fechaSubidaSocio;
 
-    @Column(name = "fecha_validacion_socio")
-    private LocalDateTime fechaValidacionSocio;
+    @Column(name = "fecha_subida_comercializadora")
+    private LocalDateTime fechaSubidaComercializadora;
 
-    @Column(name = "fecha_validacion_ingenio")
-    private LocalDateTime fechaValidacionIngenio;
-
-    @Column(name = "fecha_validacion_comercializadora")
-    private LocalDateTime fechaValidacionComercializadora;
-
-    // Auditoría
+    // ===== AUDITORÍA =====
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -123,6 +139,7 @@ public class ReporteQuimico implements Serializable {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    // ===== RELACIONES =====
     @OneToMany(mappedBy = "reporteQuimicoId", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     private List<LiquidacionLote> liquidacionLoteList = new ArrayList<>();
@@ -131,23 +148,48 @@ public class ReporteQuimico implements Serializable {
     @Builder.Default
     private List<LiquidacionConcentrado> liquidacionConcentradoList = new ArrayList<>();
 
-
     @PrePersist
     protected void onCreate() {
         if (tipoReporte == null) {
-            tipoReporte = "ingenio";
+            tipoReporte = "socio";
         }
         if (estado == null) {
             estado = "pendiente";
         }
-        if (validadoPorSocio == null) {
-            validadoPorSocio = false;
+        if (subidoPorSocio == null) {
+            subidoPorSocio = false;
         }
-        if (validadoPorIngenio == null) {
-            validadoPorIngenio = false;
+        if (subidoPorComercializadora == null) {
+            subidoPorComercializadora = false;
         }
-        if (validadoPorComercializadora == null) {
-            validadoPorComercializadora = false;
+    }
+
+    // ===== MÉTODOS DE VALIDACIÓN =====
+
+    /**
+     * Valida que los campos obligatorios estén presentes según el tipo de venta
+     */
+    public void validarCamposSegunTipoVenta() {
+        if ("venta_concentrado".equals(tipoVenta)) {
+            if (leyMineralPrincipal == null) {
+                throw new IllegalStateException("La ley del mineral principal es requerida para venta de concentrado");
+            }
+            if (leyAgGmt == null) {
+                throw new IllegalStateException("La ley de Ag (g/MT) es requerida para venta de concentrado");
+            }
+            if (porcentajeH2o == null) {
+                throw new IllegalStateException("El porcentaje de humedad es requerido para venta de concentrado");
+            }
+        } else if ("venta_lote_complejo".equals(tipoVenta)) {
+            if (leyAgDm == null) {
+                throw new IllegalStateException("La ley de Ag (DM) es requerida para venta de lote complejo");
+            }
+            if (leyPb == null) {
+                throw new IllegalStateException("La ley de Pb es requerida para venta de lote complejo");
+            }
+            if (leyZn == null) {
+                throw new IllegalStateException("La ley de Zn es requerida para venta de lote complejo");
+            }
         }
     }
 }

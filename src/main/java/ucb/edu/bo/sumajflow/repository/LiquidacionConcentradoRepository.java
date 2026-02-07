@@ -11,5 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface LiquidacionConcentradoRepository extends JpaRepository<LiquidacionConcentrado, Integer> {
+    List<LiquidacionConcentrado> findByConcentradoId(Concentrado concentrado);
+
 
 }

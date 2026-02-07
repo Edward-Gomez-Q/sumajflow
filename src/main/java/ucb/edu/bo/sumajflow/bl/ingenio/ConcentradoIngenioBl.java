@@ -183,6 +183,7 @@ public class ConcentradoIngenioBl {
 
         log.info("Minerales batch: {} => Se crearán {} concentrado(s)",
                 ctx.mineralesBatch, planificacion.getConcentrados().size());
+        boolean esMultiple = lotes.size() > 1;
 
         // 7. Crear concentrados
         List<Concentrado> concentradosCreados = new ArrayList<>();
@@ -191,7 +192,7 @@ public class ConcentradoIngenioBl {
 
             Concentrado concentrado = crearConcentradoIndividual(
                     createDto, lotes, ingenio, socioPropietario, planificado,
-                    planificacion.getEsMultiple(), i + 1, usuarioId, ipOrigen, ctx
+                    esMultiple, i + 1, usuarioId, ipOrigen, ctx
             );
 
             concentradosCreados.add(concentrado);

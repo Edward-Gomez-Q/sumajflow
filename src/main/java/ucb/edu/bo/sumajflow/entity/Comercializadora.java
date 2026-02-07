@@ -22,7 +22,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = {"usuariosId", "almacenesList", "balanzasList", "loteComercializadoraList"})
+@ToString(exclude = {"usuariosId", "almacenesList", "balanzasList", "loteComercializadoraList", "liquidacionesList"})
 public class Comercializadora implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -106,6 +106,12 @@ public class Comercializadora implements Serializable {
     @Builder.Default
     private List<BalanzaComercializadora> balanzasList = new ArrayList<>();
 
+
+    @OneToMany(mappedBy = "comercializadoraId", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Liquidacion> liquidacionesList = new ArrayList<>();
+
+
     @OneToMany(mappedBy = "comercializadoraId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     @Builder.Default
     private List<LoteComercializadora> loteComercializadoraList = new ArrayList<>();
@@ -139,5 +145,14 @@ public class Comercializadora implements Serializable {
     public void removeLoteComercializadora(LoteComercializadora loteComercializadora) {
         loteComercializadoraList.remove(loteComercializadora);
         loteComercializadora.setComercializadoraId(null);
+    }
+    public void addLiquidacion(Liquidacion liquidacion) {
+        liquidacionesList.add(liquidacion);
+        liquidacion.setComercializadoraId(this);
+    }
+
+    public void removeLiquidacion(Liquidacion liquidacion) {
+        liquidacionesList.remove(liquidacion);
+        liquidacion.setComercializadoraId(null);
     }
 }

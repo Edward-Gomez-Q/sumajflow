@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
@@ -35,6 +36,7 @@ public class LiquidacionTollSocioBl {
     private final UsuariosRepository usuariosRepository;
     private final SocioRepository socioRepository;
     private final NotificacionBl notificacionBl;
+    private final ConcentradoBl concentradoBl;
 
     // ==================== LISTAR LIQUIDACIONES ====================
 
@@ -86,9 +88,8 @@ public class LiquidacionTollSocioBl {
     // ==================== REGISTRAR PAGO ====================
 
     /**
-     * Registrar pago de liquidación - CON VALIDACIONES DE SOCIO
+     * Registrar pago de liquidación
      */
-    @Transactional
     public LiquidacionTollResponseDto registrarPago(
             Integer liquidacionId,
             LiquidacionPagoDto pagoDto,
@@ -104,20 +105,37 @@ public class LiquidacionTollSocioBl {
         validarEstadoParaPago(liquidacion);
         validarDatosPago(pagoDto);
 
-        // 2. Llamar al servicio general para registrar pago
-        liquidacion = liquidacionTollBl.registrarPago(
-                liquidacion,
-                pagoDto.getMetodoPago(),
-                pagoDto.getNumeroComprobante(),
-                pagoDto.getUrlComprobante(),
-                pagoDto.getObservaciones()
-        );
+        // 2. Registrar pago
+        liquidacion.setEstado("pagado");
+        liquidacion.setFechaPago(LocalDateTime.now());
+        liquidacion.setMetodoPago(pagoDto.getMetodoPago());
+        liquidacion.setNumeroComprobante(pagoDto.getNumeroComprobante());
+        liquidacion.setUrlComprobante(pagoDto.getUrlComprobante());
+
+        if (pagoDto.getObservaciones() != null && !pagoDto.getObservaciones().isBlank()) {
+            String obsActuales = liquidacion.getObservaciones() != null ? liquidacion.getObservaciones() : "";
+            liquidacion.setObservaciones(obsActuales + " | PAGO: " + pagoDto.getObservaciones());
+        }
+
+        liquidacionRepository.save(liquidacion);
 
         // 3. Actualizar estado de concentrados a "listo_para_venta"
         actualizarEstadoConcentrados(liquidacion);
 
         // 4. Notificar al ingenio
         notificarPagoRealizado(liquidacion);
+        //Notificar que se ha realizado el pago para el primer concentrado encontrado
+        liquidacion.getLiquidacionLoteList().stream()
+                .findFirst()
+                .map(LiquidacionLote::getLotesId)
+                .map(Lotes::getLoteConcentradoRelacionList)
+                .flatMap(relaciones -> relaciones.stream().findFirst())
+                .map(LoteConcentradoRelacion::getConcentradoId)
+                .ifPresent(concentrado ->
+
+                        //Mostrar al ingeino
+                        concentradoBl.publicarEventoWebSocketIngenio(concentrado, "listo_para_venta")
+                );
 
         log.info("✅ Pago registrado exitosamente - Liquidación ID: {}", liquidacionId);
 
@@ -211,18 +229,15 @@ public class LiquidacionTollSocioBl {
     }
 
     private void actualizarEstadoConcentrados(Liquidacion liquidacion) {
-        // Obtener concentrados relacionados con los lotes de la liquidación
         liquidacion.getLiquidacionLoteList().forEach(ll -> {
             Lotes lote = ll.getLotesId();
 
-            // Obtener concentrados que usan este lote
             List<Concentrado> concentrados = concentradoRepository.findAll().stream()
                     .filter(c -> c.getLoteConcentradoRelacionList().stream()
                             .anyMatch(rel -> rel.getLoteComplejoId().getId().equals(lote.getId())))
                     .filter(c -> "esperando_pago".equals(c.getEstado()))
                     .toList();
 
-            // Actualizar estado a "listo_para_venta"
             concentrados.forEach(c -> {
                 c.setEstado("listo_para_venta");
                 concentradoRepository.save(c);
@@ -234,11 +249,9 @@ public class LiquidacionTollSocioBl {
     private void notificarPagoRealizado(Liquidacion liquidacion) {
         // Obtener ingenio (a través de los lotes)
         Integer ingenioUsuarioId = liquidacion.getLiquidacionLoteList().stream()
-                .findFirst()
-                .map(ll -> ll.getLotesId().getLoteIngenioList().stream()
+                .findFirst().flatMap(ll -> ll.getLotesId().getLoteIngenioList().stream()
                         .findFirst()
-                        .map(li -> li.getIngenioMineroId().getUsuariosId().getId())
-                        .orElse(null))
+                        .map(li -> li.getIngenioMineroId().getUsuariosId().getId()))
                 .orElse(null);
 
         if (ingenioUsuarioId == null) {
