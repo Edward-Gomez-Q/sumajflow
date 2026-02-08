@@ -5,13 +5,11 @@ import org.springframework.web.bind.annotation.*;
 import ucb.edu.bo.sumajflow.bl.CotizacionMineralBl;
 import ucb.edu.bo.sumajflow.dto.CooperativaPublicDto;
 import ucb.edu.bo.sumajflow.dto.CotizacionMineralDto;
-import ucb.edu.bo.sumajflow.entity.Cooperativa;
-import ucb.edu.bo.sumajflow.entity.Minerales;
-import ucb.edu.bo.sumajflow.entity.Procesos;
-import ucb.edu.bo.sumajflow.repository.CooperativaRepository;
-import ucb.edu.bo.sumajflow.repository.MineralesRepository;
-import ucb.edu.bo.sumajflow.repository.ProcesosRepository;
+import ucb.edu.bo.sumajflow.entity.*;
+import ucb.edu.bo.sumajflow.repository.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,12 +25,23 @@ public class CooperativaPublicController {
     private final ProcesosRepository procesosRepository;
     private final MineralesRepository mineralesRepository;
     private final CotizacionMineralBl cotizacionMineralService;
+    private final TablaPreciosMineralRepository tablaPreciosMineralRepository;
+    private final DeduccionConfiguracionRepository deduccionConfiguracionRepository;
 
-    public CooperativaPublicController(CooperativaRepository cooperativaRepository, ProcesosRepository procesosRepository, MineralesRepository mineralesRepository, CotizacionMineralBl cotizacionMineralService) {
+    public CooperativaPublicController(
+            CooperativaRepository cooperativaRepository,
+            ProcesosRepository procesosRepository,
+            MineralesRepository mineralesRepository,
+            CotizacionMineralBl cotizacionMineralService,
+            TablaPreciosMineralRepository tablaPreciosMineralRepository,
+            DeduccionConfiguracionRepository deduccionConfiguracionRepository
+    ) {
         this.cooperativaRepository = cooperativaRepository;
         this.procesosRepository = procesosRepository;
         this.mineralesRepository = mineralesRepository;
         this.cotizacionMineralService = cotizacionMineralService;
+        this.tablaPreciosMineralRepository = tablaPreciosMineralRepository;
+        this.deduccionConfiguracionRepository = deduccionConfiguracionRepository;
     }
 
     /**
@@ -141,5 +150,56 @@ public class CooperativaPublicController {
             response.put("message", "Error al obtener cotizaciones: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);
         }
+    }
+    @GetMapping("/tabla-precios-mineral")
+    public ResponseEntity<Map<String, Object>> obtenerTablaPreciosMineral(
+            @RequestParam Integer comercializadoraId
+    ) {
+        LocalDate hoy = LocalDate.now();
+
+        // 1. Precios vigentes de la comercializadora
+        List<TablaPreciosMineral> precios = tablaPreciosMineralRepository
+                .findPreciosVigentes(comercializadoraId, hoy);
+
+        // 2. Deducciones aplicables a venta_lote_complejo
+        List<DeduccionConfiguracion> deducciones = deduccionConfiguracionRepository
+                .findDeduccionesAplicables(hoy, "venta_lote_complejo");
+
+        // 3. Dólar oficial
+        BigDecimal dolarOficial = cotizacionMineralService.obtenerDolarOficial();
+
+        // Mapear precios
+        List<Map<String, Object>> preciosList = precios.stream().map(p -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("mineral", p.getMineral());
+            m.put("unidadMedida", p.getUnidadMedida());
+            m.put("rangoMinimo", p.getRangoMinimo());
+            m.put("rangoMaximo", p.getRangoMaximo());
+            m.put("precioUsd", p.getPrecioUsd());
+            m.put("activo", p.getActivo());
+            return m;
+        }).toList();
+
+        // Mapear deducciones
+        List<Map<String, Object>> deduccionesList = deducciones.stream().map(d -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("codigo", d.getCodigo());
+            m.put("concepto", d.getConcepto());
+            m.put("porcentaje", d.getPorcentaje());
+            m.put("tipoDeduccion", d.getTipoDeduccion());
+            m.put("baseCalculo", d.getBaseCalculo());
+            m.put("aplicaAMineral", d.getAplicaAMineral());
+            m.put("orden", d.getOrden());
+            return m;
+        }).toList();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", preciosList);
+        response.put("deducciones", deduccionesList);
+        response.put("dolarOficial", dolarOficial);
+
+        return ResponseEntity.ok(response);
     }
 }

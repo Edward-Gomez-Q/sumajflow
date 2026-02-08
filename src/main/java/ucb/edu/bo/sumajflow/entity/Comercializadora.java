@@ -116,6 +116,10 @@ public class Comercializadora implements Serializable {
     @Builder.Default
     private List<LoteComercializadora> loteComercializadoraList = new ArrayList<>();
 
+    @OneToMany(mappedBy = "comercializadoraId", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    @Builder.Default
+    private List<TablaPreciosMineral> tablaPreciosMineralList = new ArrayList<>();
+
     // Métodos helper para sincronización bidireccional
     public void addAlmacen(AlmacenComercializadora almacen) {
         almacenesList.add(almacen);

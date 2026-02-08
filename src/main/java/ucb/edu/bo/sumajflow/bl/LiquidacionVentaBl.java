@@ -381,7 +381,7 @@ public class LiquidacionVentaBl {
                 .map(ll -> LoteSimpleDto.builder()
                         .id(ll.getLotesId().getId())
                         .minaNombre(ll.getLotesId().getMinasId().getNombre())
-                        .tipoMineral(ll.getLotesId().getTipoMineral())
+                        .tipoMineral("Pb,Zn,Ag")
                         .pesoTotalReal(ll.getPesoEntrada())
                         .estado(ll.getLotesId().getEstado())
                         .build())

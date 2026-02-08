@@ -51,6 +51,7 @@ public class VentaSocioBl {
     private final NotificacionBl notificacionBl;
     private final CotizacionMineralBl cotizacionMineralBl;
     private final DeduccionConfiguracionRepository deduccionConfiguracionRepository;
+    private final TablaPreciosMineralRepository tablaPreciosMineralRepository;
 
     // ==================== 1. CREAR VENTA DE CONCENTRADO ====================
 
@@ -498,23 +499,279 @@ public class VentaSocioBl {
 
     // ==================== 3. CERRAR VENTA ====================
 
-    /**
-     * Socio cierra la venta cuando la cotización internacional le conviene.
-     * Se calculan: precio ajustado, valor bruto, deducciones, valor neto.
-     * Se persiste la cotización en LiquidacionCotizacion y las deducciones en LiquidacionDeduccion.
-     * Estado: esperando_cierre_venta → cerrado
-     */
     @Transactional
     public VentaLiquidacionResponseDto cerrarVenta(
             Integer liquidacionId,
             VentaCierreDto cierreDto,
             Integer usuarioId
     ) {
-        log.info("========== INICIO CIERRE DE VENTA ==========");
-        log.info("Socio cerrando venta - Liquidación ID: {}, Usuario ID: {}", liquidacionId, usuarioId);
-
         Socio socio = obtenerSocioDelUsuario(usuarioId);
         Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, socio);
+
+        if (!"esperando_cierre_venta".equals(liquidacion.getEstado())) {
+            throw new IllegalArgumentException(
+                    "Debe estar en estado 'esperando_cierre_venta'. Estado actual: " + liquidacion.getEstado());
+        }
+
+        if (LiquidacionVentaBl.TIPO_VENTA_LOTE_COMPLEJO.equals(liquidacion.getTipoLiquidacion())) {
+            return cerrarVentaLoteComplejo(liquidacion, cierreDto);
+        } else {
+            return cerrarVentaConcentrado(liquidacion, cierreDto);
+        }
+    }
+
+    /**
+     * Cerrar venta de lote complejo usando tabla de precios de la comercializadora.
+     * Cálculo:
+     * 1. Obtener reporte acordado (ley_pb %, ley_zn %, ley_ag_dm DM)
+     * 2. Buscar precio USD por unidad en tabla_precios_mineral de la comercializadora
+     * 3. Precio por tonelada = precio_unitario × valor_ley (para cada mineral)
+     * 4. Valor bruto por mineral = precio_por_tonelada × peso_toneladas
+     * 5. Valor bruto total = suma de los tres
+     * 6. Aplicar deducciones → valor neto
+     */
+    private VentaLiquidacionResponseDto cerrarVentaLoteComplejo(
+            Liquidacion liquidacion,
+            VentaCierreDto cierreDto
+    ) {
+        log.info("========== INICIO CIERRE DE VENTA LOTE COMPLEJO ==========");
+        log.info("Liquidación ID: {}", liquidacion.getId());
+
+        LocalDate hoy = LocalDate.now();
+        BigDecimal tipoCambio = cotizacionMineralBl.obtenerDolarOficial();
+        Comercializadora comercializadora = liquidacion.getComercializadoraId();
+
+        // ========== 1. OBTENER REPORTE ACORDADO ==========
+        Map<String, Object> extras = liquidacionVentaBl.parsearJson(liquidacion.getServiciosAdicionales());
+        if (!extras.containsKey("reporte_acordado")) {
+            throw new IllegalStateException("No se encontró el reporte acordado");
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> acordado = (Map<String, Object>) extras.get("reporte_acordado");
+
+        BigDecimal leyPb = toBigDecimalSafe(acordado.get("ley_pb"));
+        BigDecimal leyZn = toBigDecimalSafe(acordado.get("ley_zn"));
+        BigDecimal leyAgDm = toBigDecimalSafe(acordado.get("ley_ag_dm"));
+
+        log.info("✅ Reporte acordado - Pb: {}%, Zn: {}%, Ag: {} DM", leyPb, leyZn, leyAgDm);
+
+        // ========== 2. OBTENER PESO EN TONELADAS ==========
+        BigDecimal pesoToneladas = liquidacion.getPesoTmh();
+        if (pesoToneladas == null || pesoToneladas.compareTo(BigDecimal.ZERO) <= 0) {
+            // Fallback: calcular desde peso_total_entrada (kg) → toneladas
+            BigDecimal pesoKg = liquidacion.getPesoTotalEntrada();
+            if (pesoKg == null || pesoKg.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException("No se puede calcular la venta sin peso válido");
+            }
+            pesoToneladas = pesoKg.divide(BigDecimal.valueOf(1000), 4, RoundingMode.HALF_UP);
+        }
+
+        log.info("✅ Peso: {} toneladas", pesoToneladas);
+
+        // ========== 3. BUSCAR PRECIOS EN TABLA DE LA COMERCIALIZADORA ==========
+        BigDecimal precioUnitarioPb = BigDecimal.ZERO;
+        BigDecimal precioUnitarioZn = BigDecimal.ZERO;
+        BigDecimal precioUnitarioAg = BigDecimal.ZERO;
+
+        if (leyPb != null && leyPb.compareTo(BigDecimal.ZERO) > 0) {
+            precioUnitarioPb = obtenerPrecioDesdeTabla(comercializadora, "Pb", leyPb, hoy);
+            log.info("✅ Precio Pb: {} USD (para ley {}%)", precioUnitarioPb, leyPb);
+        }
+
+        if (leyZn != null && leyZn.compareTo(BigDecimal.ZERO) > 0) {
+            precioUnitarioZn = obtenerPrecioDesdeTabla(comercializadora, "Zn", leyZn, hoy);
+            log.info("✅ Precio Zn: {} USD (para ley {}%)", precioUnitarioZn, leyZn);
+        }
+
+        if (leyAgDm != null && leyAgDm.compareTo(BigDecimal.ZERO) > 0) {
+            precioUnitarioAg = obtenerPrecioDesdeTabla(comercializadora, "Ag", leyAgDm, hoy);
+            log.info("✅ Precio Ag: {} USD (para {} DM)", precioUnitarioAg, leyAgDm);
+        }
+
+        // ========== 4. CALCULAR PRECIO POR TONELADA ==========
+        // precio_por_ton = precio_unitario × valor_ley
+        BigDecimal precioPorTonPb = precioUnitarioPb.multiply(leyPb != null ? leyPb : BigDecimal.ZERO)
+                .setScale(4, RoundingMode.HALF_UP);
+        BigDecimal precioPorTonZn = precioUnitarioZn.multiply(leyZn != null ? leyZn : BigDecimal.ZERO)
+                .setScale(4, RoundingMode.HALF_UP);
+        BigDecimal precioPorTonAg = precioUnitarioAg.multiply(leyAgDm != null ? leyAgDm : BigDecimal.ZERO)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        log.info("✅ Precio/Ton - Pb: {} USD/Ton, Zn: {} USD/Ton, Ag: {} USD/Ton",
+                precioPorTonPb, precioPorTonZn, precioPorTonAg);
+
+        // ========== 5. CALCULAR VALOR BRUTO POR MINERAL ==========
+        BigDecimal valorBrutoPb = precioPorTonPb.multiply(pesoToneladas).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorBrutoZn = precioPorTonZn.multiply(pesoToneladas).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorBrutoAg = precioPorTonAg.multiply(pesoToneladas).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorBrutoTotal = valorBrutoPb.add(valorBrutoZn).add(valorBrutoAg);
+
+        log.info("✅ Valor bruto - Pb: {} USD, Zn: {} USD, Ag: {} USD", valorBrutoPb, valorBrutoZn, valorBrutoAg);
+        log.info("✅ VALOR BRUTO TOTAL: {} USD", valorBrutoTotal);
+
+        // ========== 6. OBTENER Y APLICAR DEDUCCIONES ==========
+        // Para deducciones: valor_bruto_principal = Pb + Zn, valor_bruto_ag = Ag
+        BigDecimal valorBrutoPrincipal = valorBrutoPb.add(valorBrutoZn);
+
+        List<DeduccionConfiguracion> deduccionesConfig = deduccionConfiguracionRepository
+                .findDeduccionesAplicables(hoy, liquidacion.getTipoLiquidacion());
+
+        // Determinar mineral principal (el de mayor valor bruto entre Pb y Zn)
+        String mineralPrincipal = valorBrutoPb.compareTo(valorBrutoZn) >= 0 ? "Pb" : "Zn";
+
+        List<LiquidacionVentaBl.DeduccionInput> deduccionesInput = construirDeduccionesDesdeConfig(
+                deduccionesConfig, mineralPrincipal, valorBrutoPrincipal, valorBrutoAg);
+
+        LiquidacionVentaBl.CalculoVentaResult calculo = liquidacionVentaBl.calcularVentaConDeduccionesEspecificas(
+                valorBrutoPrincipal, valorBrutoAg, deduccionesInput, tipoCambio);
+
+        log.info("✅ Deducciones: {} USD, Neto: {} USD ({} BOB)",
+                calculo.totalDeduccionesUsd(), calculo.valorNetoUsd(), calculo.valorNetoBob());
+
+        // ========== 7. ACTUALIZAR LIQUIDACIÓN ==========
+        liquidacion.setValorBrutoUsd(calculo.valorBrutoUsd());
+        liquidacion.setValorNetoUsd(calculo.valorNetoUsd());
+        liquidacion.setTipoCambio(tipoCambio);
+        liquidacion.setValorNetoBob(calculo.valorNetoBob());
+        liquidacion.setTotalServiciosAdicionales(calculo.totalDeduccionesUsd());
+
+        // Guardar datos del cálculo en JSON
+        extras.put("mineral_principal", mineralPrincipal);
+        extras.put("precio_unitario_pb", precioUnitarioPb);
+        extras.put("precio_unitario_zn", precioUnitarioZn);
+        extras.put("precio_unitario_ag", precioUnitarioAg);
+        extras.put("precio_por_ton_pb", precioPorTonPb);
+        extras.put("precio_por_ton_zn", precioPorTonZn);
+        extras.put("precio_por_ton_ag", precioPorTonAg);
+        extras.put("valor_bruto_pb", valorBrutoPb);
+        extras.put("valor_bruto_zn", valorBrutoZn);
+        extras.put("valor_bruto_ag", valorBrutoAg);
+        extras.put("peso_toneladas", pesoToneladas);
+        extras.put("fecha_cierre", LocalDateTime.now().toString());
+        liquidacion.setServiciosAdicionales(liquidacionVentaBl.convertirAJson(extras));
+
+        liquidacion.setEstado("cerrado");
+
+        if (cierreDto.getObservaciones() != null && !cierreDto.getObservaciones().isBlank()) {
+            String obs = liquidacion.getObservaciones() != null ? liquidacion.getObservaciones() : "";
+            liquidacion.setObservaciones(obs + " | CIERRE LOTE: " + cierreDto.getObservaciones());
+        }
+
+        liquidacionRepository.save(liquidacion);
+
+        // ========== 8. PERSISTIR PRECIOS USADOS COMO COTIZACIONES ==========
+        // Guardamos los precios de la tabla como referencia en liquidacion_cotizacion
+        guardarCotizacionLote(liquidacion, "Pb", precioUnitarioPb, "%", comercializadora.getRazonSocial(), hoy);
+        guardarCotizacionLote(liquidacion, "Zn", precioUnitarioZn, "%", comercializadora.getRazonSocial(), hoy);
+        if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
+            guardarCotizacionLote(liquidacion, "Ag", precioUnitarioAg, "DM", comercializadora.getRazonSocial(), hoy);
+        }
+
+        // ========== 9. PERSISTIR DEDUCCIONES ==========
+        for (LiquidacionVentaBl.DeduccionResult ded : calculo.deducciones()) {
+            LiquidacionDeduccion deduccion = LiquidacionDeduccion.builder()
+                    .liquidacionId(liquidacion)
+                    .concepto(ded.concepto())
+                    .porcentaje(ded.porcentaje())
+                    .tipoDeduccion(ded.tipoDeduccion())
+                    .montoDeducido(ded.montoDeducidoUsd())
+                    .baseCalculo(ded.baseCalculo())
+                    .orden(ded.orden())
+                    .moneda("USD")
+                    .descripcion(ded.descripcion())
+                    .build();
+            liquidacion.addDeduccion(deduccion);
+            liquidacionDeduccionRepository.save(deduccion);
+        }
+
+        // ========== 10. NOTIFICAR COMERCIALIZADORA ==========
+        notificarComercializadora(liquidacion, comercializadora,
+                "Venta de lote cerrada - Pendiente de pago",
+                String.format("El socio ha cerrado la venta de lote. Monto a pagar: %.2f BOB (%.2f USD)",
+                        calculo.valorNetoBob(), calculo.valorNetoUsd()),
+                "warning");
+
+        // ========== RESUMEN ==========
+        log.info("========== RESUMEN CIERRE VENTA LOTE COMPLEJO ==========");
+        log.info("Liquidación ID: {}", liquidacion.getId());
+        log.info("Peso: {} Ton", pesoToneladas);
+        log.info("Pb: ley {}% × precio {} = {}/Ton × {} Ton = {} USD",
+                leyPb, precioUnitarioPb, precioPorTonPb, pesoToneladas, valorBrutoPb);
+        log.info("Zn: ley {}% × precio {} = {}/Ton × {} Ton = {} USD",
+                leyZn, precioUnitarioZn, precioPorTonZn, pesoToneladas, valorBrutoZn);
+        log.info("Ag: ley {} DM × precio {} = {}/Ton × {} Ton = {} USD",
+                leyAgDm, precioUnitarioAg, precioPorTonAg, pesoToneladas, valorBrutoAg);
+        log.info("Bruto: {} USD | Deducciones: {} USD | Neto: {} USD / {} BOB",
+                valorBrutoTotal, calculo.totalDeduccionesUsd(), calculo.valorNetoUsd(), calculo.valorNetoBob());
+        log.info("========== FIN CIERRE VENTA LOTE COMPLEJO ==========");
+
+        return liquidacionVentaBl.convertirADto(liquidacion);
+    }
+
+    /**
+     * Busca el precio en la tabla de precios de la comercializadora.
+     * Si no encuentra un rango que coincida, lanza excepción.
+     */
+    private BigDecimal obtenerPrecioDesdeTabla(
+            Comercializadora comercializadora,
+            String mineral,
+            BigDecimal valor,
+            LocalDate fecha
+    ) {
+        return tablaPreciosMineralRepository
+                .findPrecioVigente(comercializadora, mineral, valor, fecha)
+                .map(TablaPreciosMineral::getPrecioUsd)
+                .orElseThrow(() -> new IllegalStateException(
+                        String.format("No se encontró precio para %s con valor %.4f en la tabla de la comercializadora '%s'. " +
+                                        "Verifique que exista un rango configurado.",
+                                mineral, valor, comercializadora.getRazonSocial())));
+    }
+
+    /**
+     * Guarda una cotización de referencia (precio de tabla) en liquidacion_cotizacion
+     */
+    private void guardarCotizacionLote(
+            Liquidacion liquidacion,
+            String mineral,
+            BigDecimal precioUsd,
+            String unidad,
+            String fuente,
+            LocalDate fecha
+    ) {
+        LiquidacionCotizacion cot = LiquidacionCotizacion.builder()
+                .liquidacionId(liquidacion)
+                .mineral(mineral)
+                .cotizacionUsd(precioUsd)
+                .unidad("USD/" + unidad)
+                .fuente("Tabla precios - " + fuente)
+                .fechaCotizacion(fecha)
+                .build();
+        liquidacion.addCotizacion(cot);
+        liquidacionCotizacionRepository.save(cot);
+        log.info("✅ Cotización {} guardada: {} USD/{}", mineral, precioUsd, unidad);
+    }
+
+    /**
+     * Convierte Object a BigDecimal de forma segura
+     */
+    private BigDecimal toBigDecimalSafe(Object obj) {
+        if (obj == null) return BigDecimal.ZERO;
+        return new BigDecimal(obj.toString());
+    }
+
+    /**
+     * Socio cierra la venta cuando la cotización internacional le conviene.
+     * Se calculan: precio ajustado, valor bruto, deducciones, valor neto.
+     * Se persiste la cotización en LiquidacionCotizacion y las deducciones en LiquidacionDeduccion.
+     * Estado: esperando_cierre_venta → cerrado
+     */
+    private VentaLiquidacionResponseDto cerrarVentaConcentrado(
+            Liquidacion liquidacion,
+            VentaCierreDto cierreDto
+    ) {
+        log.info("========== INICIO CIERRE DE VENTA ==========");
+
 
         if (!"esperando_cierre_venta".equals(liquidacion.getEstado())) {
             throw new IllegalArgumentException(
@@ -849,7 +1106,7 @@ public class VentaSocioBl {
 
         // ========== RESUMEN FINAL ==========
         log.info("========== RESUMEN CIERRE DE VENTA ==========");
-        log.info("Liquidación ID: {}", liquidacionId);
+        log.info("Liquidación ID: {}", liquidacion.getId());
         log.info("Tipo: {}", liquidacion.getTipoLiquidacion());
         log.info("Mineral principal: {} (ley: {}%)", mineralPrincipal, leyMineralPrincipal);
         log.info("Plata: {} g/MT ({} oz/ton)", leyAgGmt, contenidoAgOzTon);
@@ -1133,6 +1390,7 @@ public class VentaSocioBl {
                     map.put("tipoMineral", l.getTipoMineral());
                     map.put("pesoTotalReal", l.getPesoTotalReal());
                     map.put("estado", l.getEstado());
+                    map.put("comercializadoraId", l.getLoteComercializadoraList().getFirst().getComercializadoraId().getId().toString());
                     return map;
                 }).collect(Collectors.toList());
     }
