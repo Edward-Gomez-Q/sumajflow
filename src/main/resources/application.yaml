@@ -1,3 +1,7 @@
+metalsapi:
+  base-url: ${METALS_API_BASE_URL:https://metals-api.com/api}
+  api-key: ${METALS_API_KEY:}
+
 minio:
   url: ${MINIO_URL:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY}

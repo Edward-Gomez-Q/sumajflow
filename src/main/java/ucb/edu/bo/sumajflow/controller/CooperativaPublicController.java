@@ -2,7 +2,9 @@ package ucb.edu.bo.sumajflow.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ucb.edu.bo.sumajflow.bl.CotizacionMineralBl;
 import ucb.edu.bo.sumajflow.dto.CooperativaPublicDto;
+import ucb.edu.bo.sumajflow.dto.CotizacionMineralDto;
 import ucb.edu.bo.sumajflow.entity.Cooperativa;
 import ucb.edu.bo.sumajflow.entity.Minerales;
 import ucb.edu.bo.sumajflow.entity.Procesos;
@@ -24,11 +26,13 @@ public class CooperativaPublicController {
     private final CooperativaRepository cooperativaRepository;
     private final ProcesosRepository procesosRepository;
     private final MineralesRepository mineralesRepository;
+    private final CotizacionMineralBl cotizacionMineralService;
 
-    public CooperativaPublicController(CooperativaRepository cooperativaRepository, ProcesosRepository procesosRepository, MineralesRepository mineralesRepository) {
+    public CooperativaPublicController(CooperativaRepository cooperativaRepository, ProcesosRepository procesosRepository, MineralesRepository mineralesRepository, CotizacionMineralBl cotizacionMineralService) {
         this.cooperativaRepository = cooperativaRepository;
         this.procesosRepository = procesosRepository;
         this.mineralesRepository = mineralesRepository;
+        this.cotizacionMineralService = cotizacionMineralService;
     }
 
     /**
@@ -116,6 +120,25 @@ public class CooperativaPublicController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", "Error al obtener minerales: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+    @GetMapping("/cotizaciones-minerales")
+    public ResponseEntity<Map<String, Object>> getCotizacionesMinerales() {
+        Map<String, Object> response = new HashMap<>();
+        try {
+           Map<String, CotizacionMineralDto> cotizaciones = cotizacionMineralService.obtenerCotizacionesActuales();
+
+            Map<String, Object> deducciones = cotizacionMineralService.obtenerCotizacionesYDeducciones("todos");
+            response.put("success", true);
+            response.put("data", cotizaciones);
+            response.put("dolarOficial", cotizacionMineralService.obtenerDolarOficial());
+            response.put("deducciones", deducciones.get("deducciones"));
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error al obtener cotizaciones: " + e.getMessage());
             return ResponseEntity.internalServerError().body(response);
         }
     }

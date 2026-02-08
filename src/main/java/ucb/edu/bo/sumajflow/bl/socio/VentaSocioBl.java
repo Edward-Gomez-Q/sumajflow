@@ -5,9 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.CotizacionMineralBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl.*;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.dto.CotizacionMineralDto;
 import ucb.edu.bo.sumajflow.dto.venta.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
@@ -47,6 +49,8 @@ public class VentaSocioBl {
     private final UsuariosRepository usuariosRepository;
     private final SocioRepository socioRepository;
     private final NotificacionBl notificacionBl;
+    private final CotizacionMineralBl cotizacionMineralBl;
+    private final DeduccionConfiguracionRepository deduccionConfiguracionRepository;
 
     // ==================== 1. CREAR VENTA DE CONCENTRADO ====================
 
@@ -506,7 +510,8 @@ public class VentaSocioBl {
             VentaCierreDto cierreDto,
             Integer usuarioId
     ) {
-        log.info("Socio cerrando venta - Liquidación ID: {}", liquidacionId);
+        log.info("========== INICIO CIERRE DE VENTA ==========");
+        log.info("Socio cerrando venta - Liquidación ID: {}, Usuario ID: {}", liquidacionId, usuarioId);
 
         Socio socio = obtenerSocioDelUsuario(usuarioId);
         Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, socio);
@@ -516,51 +521,255 @@ public class VentaSocioBl {
                     "Debe estar en estado 'esperando_cierre_venta'. Estado actual: " + liquidacion.getEstado());
         }
 
-        // Obtener ley mineral principal del reporte acordado
-        Map<String, Object> extras = liquidacionVentaBl.parsearJson(liquidacion.getServiciosAdicionales());
-        BigDecimal leyMineralPrincipal;
+        // ========== 1. OBTENER COTIZACIONES Y DEDUCCIONES ACTUALES ==========
+        log.info("========== PASO 1: Obtener Cotizaciones y Deducciones ==========");
 
-        if (extras.containsKey("reporte_acordado")) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> acordado = (Map<String, Object>) extras.get("reporte_acordado");
-            leyMineralPrincipal = new BigDecimal(acordado.get("ley_mineral_principal").toString());
-        } else {
+        Map<String, CotizacionMineralDto> cotizaciones = cotizacionMineralBl.obtenerCotizacionesActuales();
+        BigDecimal tipoCambio = cotizacionMineralBl.obtenerDolarOficial();
+        LocalDate hoy = LocalDate.now();
+
+        log.info("✅ Cotizaciones obtenidas:");
+        log.info("   - Pb: {} USD/ton ({})", cotizaciones.get("Pb").getCotizacionUsdTon(), cotizaciones.get("Pb").getFuente());
+        log.info("   - Zn: {} USD/ton ({})", cotizaciones.get("Zn").getCotizacionUsdTon(), cotizaciones.get("Zn").getFuente());
+        log.info("   - Ag: {} USD/oz ({})", cotizaciones.get("Ag").getCotizacionUsdOz(), cotizaciones.get("Ag").getFuente());
+        log.info("   - Tipo de cambio: {} BOB/USD", tipoCambio);
+
+        // ========== 2. OBTENER REPORTE ACORDADO ==========
+        log.info("========== PASO 2: Obtener Reporte Acordado ==========");
+
+        Map<String, Object> extras = liquidacionVentaBl.parsearJson(liquidacion.getServiciosAdicionales());
+        if (!extras.containsKey("reporte_acordado")) {
             throw new IllegalStateException("No se encontró el reporte acordado");
         }
 
-        // Determinar peso para el cálculo
+        @SuppressWarnings("unchecked")
+        Map<String, Object> acordado = (Map<String, Object>) extras.get("reporte_acordado");
+
+        BigDecimal leyMineralPrincipal = null;
+        BigDecimal leyAgGmt = BigDecimal.ZERO;
+        BigDecimal leyPb = null;
+        BigDecimal leyZn = null;
+
+        if (LiquidacionVentaBl.TIPO_VENTA_CONCENTRADO.equals(liquidacion.getTipoLiquidacion())) {
+            // Concentrado: ley_mineral_principal + ley_ag_gmt
+            leyMineralPrincipal = new BigDecimal(acordado.get("ley_mineral_principal").toString());
+            if (acordado.containsKey("ley_ag_gmt") && acordado.get("ley_ag_gmt") != null) {
+                leyAgGmt = new BigDecimal(acordado.get("ley_ag_gmt").toString());
+            }
+            log.info("✅ Tipo: VENTA_CONCENTRADO");
+            log.info("   - Ley mineral principal: {}%", leyMineralPrincipal);
+            log.info("   - Ley Ag: {} g/MT", leyAgGmt);
+        } else {
+            // Lote complejo: ley_ag_dm, ley_pb, ley_zn
+            if (acordado.containsKey("ley_ag_dm") && acordado.get("ley_ag_dm") != null) {
+                leyAgGmt = new BigDecimal(acordado.get("ley_ag_dm").toString());
+            }
+            if (acordado.containsKey("ley_pb") && acordado.get("ley_pb") != null) {
+                leyPb = new BigDecimal(acordado.get("ley_pb").toString());
+            }
+            if (acordado.containsKey("ley_zn") && acordado.get("ley_zn") != null) {
+                leyZn = new BigDecimal(acordado.get("ley_zn").toString());
+            }
+            log.info("✅ Tipo: VENTA_LOTE_COMPLEJO");
+            log.info("   - Ley Ag: {} g/MT", leyAgGmt);
+            log.info("   - Ley Pb: {}%", leyPb);
+            log.info("   - Ley Zn: {}%", leyZn);
+        }
+
+        // ========== 3. DETERMINAR PESO ==========
+        log.info("========== PASO 3: Determinar Peso Oficial ==========");
+
         BigDecimal pesoFinal = liquidacion.getPesoFinalTms();
+        String tipoPeso = "Peso Final TMS";
+
+        if (pesoFinal == null || pesoFinal.compareTo(BigDecimal.ZERO) <= 0) {
+            pesoFinal = liquidacion.getPesoTms();
+            tipoPeso = "Peso TMS (sin merma final)";
+        }
         if (pesoFinal == null || pesoFinal.compareTo(BigDecimal.ZERO) <= 0) {
             pesoFinal = liquidacion.getPesoTmh();
+            tipoPeso = "Peso TMH (fallback)";
         }
         if (pesoFinal == null || pesoFinal.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalStateException("No se puede calcular la venta sin peso");
+            throw new IllegalStateException("No se puede calcular la venta sin peso válido");
         }
 
-        // Construir deducciones input
-        List<DeduccionInput> deduccionesInput = cierreDto.getDeducciones().stream()
-                .map(d -> new DeduccionInput(d.getConcepto(), d.getPorcentaje(), d.getTipoDeduccion(), d.getDescripcion()))
-                .collect(Collectors.toList());
+        log.info("✅ Peso oficial determinado: {} ton ({})", pesoFinal, tipoPeso);
 
-        // Calcular venta
-        CalculoVentaResult calculo = liquidacionVentaBl.calcularVenta(
-                cierreDto.getCotizacionInternacionalUsd(),
-                leyMineralPrincipal,
-                pesoFinal,
-                cierreDto.getTipoCambio(),
-                deduccionesInput
+        // ========== 4. IDENTIFICAR MINERAL PRINCIPAL Y OBTENER COTIZACIÓN ==========
+        log.info("========== PASO 4: Identificar Mineral Principal ==========");
+
+        String mineralPrincipal = extras.containsKey("mineral_principal")
+                ? (String) extras.get("mineral_principal")
+                : null;
+
+        CotizacionMineralDto cotizacionPrincipal;
+        BigDecimal cotizacionUsdPrincipal;
+
+        if (LiquidacionVentaBl.TIPO_VENTA_CONCENTRADO.equals(liquidacion.getTipoLiquidacion())) {
+            // Para concentrado: usar mineral principal (Pb o Zn)
+            if ("Pb".equalsIgnoreCase(mineralPrincipal)) {
+                cotizacionPrincipal = cotizaciones.get("Pb");
+            } else if ("Zn".equalsIgnoreCase(mineralPrincipal)) {
+                cotizacionPrincipal = cotizaciones.get("Zn");
+            } else {
+                throw new IllegalArgumentException("Mineral principal no reconocido: " + mineralPrincipal);
+            }
+            cotizacionUsdPrincipal = cotizacionPrincipal.getCotizacionUsdTon();
+        } else {
+            // Para lote complejo: usar Pb como referencia
+            cotizacionPrincipal = cotizaciones.get("Pb");
+            cotizacionUsdPrincipal = cotizacionPrincipal.getCotizacionUsdTon();
+
+            // Si no hay leyPb, usar leyZn
+            if (leyPb == null || leyPb.compareTo(BigDecimal.ZERO) == 0) {
+                if (leyZn != null && leyZn.compareTo(BigDecimal.ZERO) > 0) {
+                    cotizacionPrincipal = cotizaciones.get("Zn");
+                    cotizacionUsdPrincipal = cotizacionPrincipal.getCotizacionUsdTon();
+                    leyMineralPrincipal = leyZn;
+                    mineralPrincipal = "Zn";
+                } else {
+                    throw new IllegalStateException("No hay ley de Pb ni Zn en el lote complejo");
+                }
+            } else {
+                leyMineralPrincipal = leyPb;
+                mineralPrincipal = "Pb";
+            }
+        }
+
+        log.info("✅ Mineral principal identificado: {}", mineralPrincipal);
+        log.info("   - Cotización: {} USD/ton", cotizacionUsdPrincipal);
+        log.info("   - Ley: {}%", leyMineralPrincipal);
+
+        // ========== 5. CALCULAR VALOR DEL MINERAL PRINCIPAL (USD/ton) ==========
+        log.info("========== PASO 5: Calcular Valoración Mineral Principal ==========");
+
+        // valorPrincipalUsdTon = (cotizacionUsdTon * leyMineral%) / 100
+        BigDecimal valorPrincipalUsdTon = cotizacionUsdPrincipal
+                .multiply(leyMineralPrincipal)
+                .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+
+        log.info("✅ Cálculo: ({} USD/ton × {}%) / 100 = {} USD/ton",
+                cotizacionUsdPrincipal, leyMineralPrincipal, valorPrincipalUsdTon);
+
+        // ========== 6. CALCULAR VALOR DE PLATA (USD/ton) ==========
+        log.info("========== PASO 6: Calcular Valoración Plata ==========");
+
+        BigDecimal valorAgUsdTon = BigDecimal.ZERO;
+        BigDecimal contenidoAgOzTon = BigDecimal.ZERO;
+        CotizacionMineralDto cotizacionAg = cotizaciones.get("Ag");
+
+        if (leyAgGmt.compareTo(BigDecimal.ZERO) > 0) {
+            // Constante de conversión
+            BigDecimal GRAMOS_POR_ONZA_TROY = new BigDecimal("31.1034768");
+
+            // contenidoAgOzTon = leyAgGmt / GRAMOS_POR_ONZA_TROY
+            contenidoAgOzTon = leyAgGmt.divide(GRAMOS_POR_ONZA_TROY, 6, RoundingMode.HALF_UP);
+
+            // valorAgUsdTon = contenidoAgOzTon * cotizacionUsdOz
+            valorAgUsdTon = contenidoAgOzTon
+                    .multiply(cotizacionAg.getCotizacionUsdOz())
+                    .setScale(4, RoundingMode.HALF_UP);
+
+            log.info("✅ Cálculo Ag:");
+            log.info("   - Ley Ag: {} g/MT", leyAgGmt);
+            log.info("   - Contenido: {} g/MT ÷ {} g/oz = {} oz/ton",
+                    leyAgGmt, GRAMOS_POR_ONZA_TROY, contenidoAgOzTon);
+            log.info("   - Valoración: {} oz/ton × {} USD/oz = {} USD/ton",
+                    contenidoAgOzTon, cotizacionAg.getCotizacionUsdOz(), valorAgUsdTon);
+        } else {
+            log.info("⚠️  No hay contenido de plata (ley = 0)");
+        }
+
+        // ========== 7. CALCULAR VALOR TOTAL POR TONELADA ==========
+        log.info("========== PASO 7: Calcular Valor Total USD/ton ==========");
+
+        // valorTotalUsdTon = valorPrincipalUsdTon + valorAgUsdTon
+        BigDecimal valorTotalUsdTon = valorPrincipalUsdTon.add(valorAgUsdTon);
+
+        log.info("✅ Valor total por tonelada: {} + {} = {} USD/ton",
+                valorPrincipalUsdTon, valorAgUsdTon, valorTotalUsdTon);
+
+        // ========== 8. CALCULAR VALOR BRUTO TOTAL ==========
+        log.info("========== PASO 8: Calcular Valor Bruto Total ==========");
+
+        // valorBrutoTotal = valorTotalUsdTon * pesoFinal
+        BigDecimal valorBrutoTotal = valorTotalUsdTon
+                .multiply(pesoFinal)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        // Para las deducciones también necesitamos los valores brutos separados
+        BigDecimal valorBrutoPrincipal = valorPrincipalUsdTon
+                .multiply(pesoFinal)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        BigDecimal valorBrutoAg = valorAgUsdTon
+                .multiply(pesoFinal)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        log.info("✅ Valores brutos calculados:");
+        log.info("   - Mineral principal: {} USD/ton × {} ton = {} USD",
+                valorPrincipalUsdTon, pesoFinal, valorBrutoPrincipal);
+        log.info("   - Plata: {} USD/ton × {} ton = {} USD",
+                valorAgUsdTon, pesoFinal, valorBrutoAg);
+        log.info("   - TOTAL BRUTO: {} USD", valorBrutoTotal);
+
+        // ========== 9. OBTENER Y APLICAR DEDUCCIONES DESDE BD ==========
+        log.info("========== PASO 9: Obtener Deducciones desde BD ==========");
+
+        List<DeduccionConfiguracion> deduccionesConfig = deduccionConfiguracionRepository
+                .findDeduccionesAplicables(hoy, liquidacion.getTipoLiquidacion());
+
+        log.info("✅ Se encontraron {} deducciones configuradas para tipo '{}'",
+                deduccionesConfig.size(), liquidacion.getTipoLiquidacion());
+
+        List<DeduccionInput> deduccionesInput = construirDeduccionesDesdeConfig(
+                deduccionesConfig,
+                mineralPrincipal,
+                valorBrutoPrincipal,
+                valorBrutoAg
         );
 
-        // Actualizar liquidación
-        liquidacion.setCostoPorTonelada(cierreDto.getCotizacionInternacionalUsd());
+        log.info("✅ Se aplicarán {} deducciones después del filtrado", deduccionesInput.size());
+
+        // ========== 10. CALCULAR DEDUCCIONES Y VALOR NETO ==========
+        log.info("========== PASO 10: Calcular Deducciones y Valor Neto ==========");
+
+        CalculoVentaResult calculo = liquidacionVentaBl.calcularVentaConDeduccionesEspecificas(
+                valorBrutoPrincipal,
+                valorBrutoAg,
+                deduccionesInput,
+                tipoCambio
+        );
+
+        log.info("✅ Cálculo de deducciones completado:");
+        for (DeduccionResult ded : calculo.deducciones()) {
+            log.info("   - {}: {}% sobre {} = {} USD",
+                    ded.concepto(), ded.porcentaje(), ded.baseCalculo(), ded.montoDeducidoUsd());
+        }
+        log.info("   - Total deducciones: {} USD", calculo.totalDeduccionesUsd());
+        log.info("   - Valor neto: {} USD ({} BOB)",
+                calculo.valorNetoUsd(), calculo.valorNetoBob());
+
+        // ========== 11. ACTUALIZAR LIQUIDACIÓN ==========
+        log.info("========== PASO 11: Actualizar Liquidación ==========");
+
+        liquidacion.setCostoPorTonelada(cotizacionUsdPrincipal);
         liquidacion.setValorBrutoUsd(calculo.valorBrutoUsd());
         liquidacion.setValorNetoUsd(calculo.valorNetoUsd());
-        liquidacion.setTipoCambio(cierreDto.getTipoCambio());
+        liquidacion.setTipoCambio(tipoCambio);
         liquidacion.setValorNetoBob(calculo.valorNetoBob());
         liquidacion.setTotalServiciosAdicionales(calculo.totalDeduccionesUsd());
 
-        extras.put("precio_ajustado_usd", calculo.precioAjustadoUsd());
+        // Guardar datos adicionales en JSON
+        extras.put("valor_principal_usd_ton", valorPrincipalUsdTon);
+        extras.put("valor_ag_usd_ton", valorAgUsdTon);
+        extras.put("contenido_ag_oz_ton", contenidoAgOzTon);
+        extras.put("valor_total_usd_ton", valorTotalUsdTon);
+        extras.put("valor_bruto_principal_usd", valorBrutoPrincipal);
+        extras.put("valor_bruto_ag_usd", valorBrutoAg);
         extras.put("ley_mineral_principal_promedio", leyMineralPrincipal);
+        extras.put("ley_ag_gmt", leyAgGmt);
         extras.put("fecha_cierre", LocalDateTime.now().toString());
         liquidacion.setServiciosAdicionales(liquidacionVentaBl.convertirAJson(extras));
 
@@ -572,23 +781,44 @@ public class VentaSocioBl {
         }
 
         liquidacionRepository.save(liquidacion);
+        log.info("✅ Liquidación actualizada y guardada");
 
-        // Persistir cotización en LiquidacionCotizacion
-        String mineralPrincipal = extras.containsKey("mineral_principal")
-                ? (String) extras.get("mineral_principal") : null;
+        // ========== 12. PERSISTIR COTIZACIONES ==========
+        log.info("========== PASO 12: Persistir Cotizaciones ==========");
 
-        LiquidacionCotizacion cotizacion = LiquidacionCotizacion.builder()
+        // Cotización mineral principal
+        LiquidacionCotizacion cotizacionPrincipalEntity = LiquidacionCotizacion.builder()
                 .liquidacionId(liquidacion)
-                .mineral(cierreDto.getMineralCotizado() != null ? cierreDto.getMineralCotizado() : mineralPrincipal)
-                .cotizacionUsd(cierreDto.getCotizacionInternacionalUsd())
-                .unidad("USD/TM")
-                .fuente(cierreDto.getFuenteCotizacion() != null ? cierreDto.getFuenteCotizacion() : "Manual")
-                .fechaCotizacion(LocalDate.now())
+                .mineral(cotizacionPrincipal.getNomenclatura())
+                .cotizacionUsd(cotizacionUsdPrincipal)
+                .unidad(cotizacionPrincipal.getUnidad())
+                .fuente(cotizacionPrincipal.getFuente())
+                .fechaCotizacion(cotizacionPrincipal.getFecha())
                 .build();
-        liquidacion.addCotizacion(cotizacion);
-        liquidacionCotizacionRepository.save(cotizacion);
+        liquidacion.addCotizacion(cotizacionPrincipalEntity);
+        liquidacionCotizacionRepository.save(cotizacionPrincipalEntity);
+        log.info("✅ Cotización {} guardada: {} {}",
+                mineralPrincipal, cotizacionUsdPrincipal, cotizacionPrincipal.getUnidad());
 
-        // Persistir deducciones en LiquidacionDeduccion
+        // Cotización plata (si aplica)
+        if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
+            LiquidacionCotizacion cotizacionAgEntity = LiquidacionCotizacion.builder()
+                    .liquidacionId(liquidacion)
+                    .mineral("Ag")
+                    .cotizacionUsd(cotizacionAg.getCotizacionUsdOz())
+                    .unidad(cotizacionAg.getUnidad())
+                    .fuente(cotizacionAg.getFuente())
+                    .fechaCotizacion(cotizacionAg.getFecha())
+                    .build();
+            liquidacion.addCotizacion(cotizacionAgEntity);
+            liquidacionCotizacionRepository.save(cotizacionAgEntity);
+            log.info("✅ Cotización Ag guardada: {} {}",
+                    cotizacionAg.getCotizacionUsdOz(), cotizacionAg.getUnidad());
+        }
+
+        // ========== 13. PERSISTIR DEDUCCIONES ==========
+        log.info("========== PASO 13: Persistir Deducciones ==========");
+
         for (DeduccionResult ded : calculo.deducciones()) {
             LiquidacionDeduccion deduccion = LiquidacionDeduccion.builder()
                     .liquidacionId(liquidacion)
@@ -596,7 +826,7 @@ public class VentaSocioBl {
                     .porcentaje(ded.porcentaje())
                     .tipoDeduccion(ded.tipoDeduccion())
                     .montoDeducido(ded.montoDeducidoUsd())
-                    .baseCalculo("valor_bruto")
+                    .baseCalculo(ded.baseCalculo())
                     .orden(ded.orden())
                     .moneda("USD")
                     .descripcion(ded.descripcion())
@@ -604,19 +834,209 @@ public class VentaSocioBl {
             liquidacion.addDeduccion(deduccion);
             liquidacionDeduccionRepository.save(deduccion);
         }
+        log.info("✅ {} deducciones guardadas", calculo.deducciones().size());
 
-        // Notificar comercializadora
+        // ========== 14. NOTIFICAR COMERCIALIZADORA ==========
+        log.info("========== PASO 14: Notificar Comercializadora ==========");
+
         Comercializadora comercializadora = liquidacion.getComercializadoraId();
         notificarComercializadora(liquidacion, comercializadora,
                 "Venta cerrada - Pendiente de pago",
                 String.format("El socio ha cerrado la venta. Monto a pagar: %.2f BOB (%.2f USD)",
                         calculo.valorNetoBob(), calculo.valorNetoUsd()),
                 "warning");
+        log.info("✅ Notificación enviada a comercializadora ID: {}", comercializadora.getId());
 
-        log.info("✅ Venta cerrada - ID: {}, Neto: {} USD / {} BOB",
-                liquidacionId, calculo.valorNetoUsd(), calculo.valorNetoBob());
+        // ========== RESUMEN FINAL ==========
+        log.info("========== RESUMEN CIERRE DE VENTA ==========");
+        log.info("Liquidación ID: {}", liquidacionId);
+        log.info("Tipo: {}", liquidacion.getTipoLiquidacion());
+        log.info("Mineral principal: {} (ley: {}%)", mineralPrincipal, leyMineralPrincipal);
+        log.info("Plata: {} g/MT ({} oz/ton)", leyAgGmt, contenidoAgOzTon);
+        log.info("Peso: {} ton", pesoFinal);
+        log.info("Valoración USD/ton: {} ({} + {} Ag)",
+                valorTotalUsdTon, valorPrincipalUsdTon, valorAgUsdTon);
+        log.info("Valor bruto: {} USD", calculo.valorBrutoUsd());
+        log.info("Deducciones: {} USD", calculo.totalDeduccionesUsd());
+        log.info("Valor neto: {} USD / {} BOB", calculo.valorNetoUsd(), calculo.valorNetoBob());
+        log.info("Tipo de cambio: {}", tipoCambio);
+        log.info("========== FIN CIERRE DE VENTA ==========");
 
         return liquidacionVentaBl.convertirADto(liquidacion);
+    }
+
+    /**
+     * Construir deducciones desde configuración de BD
+     */
+    private List<DeduccionInput> construirDeduccionesDesdeConfig(
+            List<DeduccionConfiguracion> configs,
+            String mineralPrincipal,
+            BigDecimal valorBrutoPrincipal,
+            BigDecimal valorBrutoAg
+    ) {
+        log.info("   Filtrando deducciones para mineral: {}", mineralPrincipal);
+
+        List<DeduccionInput> deducciones = new ArrayList<>();
+
+        for (DeduccionConfiguracion config : configs) {
+            String aplicaA = config.getAplicaAMineral();
+
+            // Log de evaluación
+            log.debug("   Evaluando deducción: {} (aplica a: {})",
+                    config.getConcepto(), aplicaA != null ? aplicaA : "todos");
+
+            // Filtrar deducciones según mineral
+            if (aplicaA != null && !"todos".equalsIgnoreCase(aplicaA)) {
+
+                // Regalía de mineral principal (Pb o Zn)
+                if (aplicaA.equalsIgnoreCase(mineralPrincipal)) {
+                    deducciones.add(new DeduccionInput(
+                            config.getConcepto(),
+                            config.getPorcentaje(),
+                            config.getTipoDeduccion(),
+                            config.getDescripcion(),
+                            config.getBaseCalculo(),
+                            config.getOrden()
+                    ));
+                    log.info("   ✓ Aplicando: {} (mineral principal {})",
+                            config.getConcepto(), mineralPrincipal);
+                }
+                // Regalía de plata (solo si hay contenido de Ag)
+                else if ("Ag".equalsIgnoreCase(aplicaA)) {
+                    if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
+                        deducciones.add(new DeduccionInput(
+                                config.getConcepto(),
+                                config.getPorcentaje(),
+                                config.getTipoDeduccion(),
+                                config.getDescripcion(),
+                                config.getBaseCalculo(),
+                                config.getOrden()
+                        ));
+                        log.info("   ✓ Aplicando: {} (hay contenido de Ag)", config.getConcepto());
+                    } else {
+                        log.debug("   ✗ Omitiendo: {} (sin contenido de Ag)", config.getConcepto());
+                    }
+                } else {
+                    log.debug("   ✗ Omitiendo: {} (no aplica a {})",
+                            config.getConcepto(), mineralPrincipal);
+                }
+            }
+            // Deducciones que aplican a todos los minerales
+            else {
+                deducciones.add(new DeduccionInput(
+                        config.getConcepto(),
+                        config.getPorcentaje(),
+                        config.getTipoDeduccion(),
+                        config.getDescripcion(),
+                        config.getBaseCalculo(),
+                        config.getOrden()
+                ));
+                log.info("   ✓ Aplicando: {} (aplica a todos)", config.getConcepto());
+            }
+        }
+
+        log.info("   Total deducciones después del filtrado: {}", deducciones.size());
+        return deducciones;
+    }
+    /**
+     * Construir deducciones fijas por ley boliviana
+     */
+    private List<DeduccionInput> construirDeduccionesFijas(
+            String mineralPrincipal,
+            BigDecimal valorBrutoPrincipal,
+            BigDecimal valorBrutoAg
+    ) {
+        List<DeduccionInput> deducciones = new ArrayList<>();
+        int orden = 1;
+
+        // ========== REGALÍAS MINERAS (sobre cada mineral específico) ==========
+
+        // Regalía Minera - Mineral Principal (Zn o Pb): 3%
+        if ("Zn".equalsIgnoreCase(mineralPrincipal)) {
+            deducciones.add(new DeduccionInput(
+                    "Regalía Minera - Zinc",
+                    new BigDecimal("3.0"),
+                    "regalia",
+                    "Regalía minera por Zinc según ley aplicable",
+                    "valor_bruto_principal",
+                    orden++
+            ));
+        } else if ("Pb".equalsIgnoreCase(mineralPrincipal)) {
+            deducciones.add(new DeduccionInput(
+                    "Regalía Minera - Plomo",
+                    new BigDecimal("3.0"),
+                    "regalia",
+                    "Regalía minera por Plomo según ley aplicable",
+                    "valor_bruto_principal",
+                    orden++
+            ));
+        }
+
+        // Regalía Minera - Plata: 3.6% (solo si hay contenido de Ag)
+        if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
+            deducciones.add(new DeduccionInput(
+                    "Regalía Minera - Plata",
+                    new BigDecimal("3.6"),
+                    "regalia",
+                    "Regalía minera por Plata según ley aplicable",
+                    "valor_bruto_ag",
+                    orden++
+            ));
+        }
+
+        // ========== APORTES Y CONTRIBUCIONES (sobre valor bruto total) ==========
+
+        // Aporte a la Cooperativa: 3%
+        deducciones.add(new DeduccionInput(
+                "Aporte a la Cooperativa",
+                new BigDecimal("3.0"),
+                "aporte",
+                "Aporte obligatorio a la cooperativa minera",
+                "valor_bruto_total",
+                orden++
+        ));
+
+        // C.N.S (Caja Nacional de Salud): 1.8%
+        deducciones.add(new DeduccionInput(
+                "C.N.S",
+                new BigDecimal("1.8"),
+                "aporte",
+                "Caja Nacional de Salud",
+                "valor_bruto_total",
+                orden++
+        ));
+
+        // COMIBOL (Corporación Minera de Bolivia): 1%
+        deducciones.add(new DeduccionInput(
+                "COMIBOL",
+                new BigDecimal("1.0"),
+                "aporte",
+                "Corporación Minera de Bolivia",
+                "valor_bruto_total",
+                orden++
+        ));
+
+        // FEDECOMIN (Federación de Cooperativas Mineras): 1%
+        deducciones.add(new DeduccionInput(
+                "FEDECOMIN",
+                new BigDecimal("1.0"),
+                "aporte",
+                "Federación de Cooperativas Mineras",
+                "valor_bruto_total",
+                orden++
+        ));
+
+        // FENCOMIN (Federación Nacional de Cooperativas Mineras): 0.4%
+        deducciones.add(new DeduccionInput(
+                "FENCOMIN",
+                new BigDecimal("0.4"),
+                "aporte",
+                "Federación Nacional de Cooperativas Mineras",
+                "valor_bruto_total",
+                orden++
+        ));
+
+        return deducciones;
     }
 
     // ==================== 4. LISTAR Y CONSULTAR ====================

@@ -106,75 +106,85 @@ public class LiquidacionVentaBl {
         }
         return fechaHasta == null || !l.getCreatedAt().isAfter(fechaHasta);
     }
-
-    // ==================== CÁLCULOS DE VENTA ====================
-
     /**
-     * Calcular el valor de la venta completo
-     * Fórmula:
-     * 1. precioAjustado = cotizaciónInternacional * (leyMineralPrincipal / 100)
-     * 2. valorBrutoUsd = precioAjustado * pesoFinalTms
-     * 3. Para cada deducción: montoDeduccion = valorBrutoUsd * (porcentaje / 100)
-     * 4. totalDeducciones = suma de todas las deducciones
-     * 5. valorNetoUsd = valorBrutoUsd - totalDeducciones
-     * 6. valorNetoBob = valorNetoUsd * tipoCambio
+     * Calcular venta con deducciones aplicadas sobre diferentes bases de cálculo
+     * @param valorBrutoPrincipal - Valor del mineral principal (Pb o Zn)
+     * @param valorBrutoAg - Valor de la plata (Ag)
+     * @param deducciones - Lista de deducciones con sus bases de cálculo
+     * @param tipoCambio - Tipo de cambio USD a BOB
      */
-    public CalculoVentaResult calcularVenta(
-            BigDecimal cotizacionInternacionalUsd,
-            BigDecimal leyMineralPrincipal,
-            BigDecimal pesoFinalTms,
-            BigDecimal tipoCambio,
-            List<DeduccionInput> deducciones
+    public CalculoVentaResult calcularVentaConDeduccionesEspecificas(
+            BigDecimal valorBrutoPrincipal,
+            BigDecimal valorBrutoAg,
+            List<DeduccionInput> deducciones,
+            BigDecimal tipoCambio
     ) {
-        // 1. Precio ajustado por ley del mineral
-        BigDecimal precioAjustado = cotizacionInternacionalUsd
-                .multiply(leyMineralPrincipal)
-                .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+        BigDecimal valorBrutoTotal = valorBrutoPrincipal.add(valorBrutoAg);
 
-        // 2. Valor bruto
-        BigDecimal valorBrutoUsd = precioAjustado
-                .multiply(pesoFinalTms)
-                .setScale(4, RoundingMode.HALF_UP);
-
-        // 3. Deducciones
         List<DeduccionResult> deduccionesResult = new ArrayList<>();
         BigDecimal totalDeduccionesUsd = BigDecimal.ZERO;
 
-        int orden = 1;
         for (DeduccionInput ded : deducciones) {
-            BigDecimal montoDeducido = valorBrutoUsd
+            BigDecimal baseCalculo = switch (ded.baseCalculo()) {
+                case "valor_bruto_principal" -> valorBrutoPrincipal;
+                case "valor_bruto_ag" -> valorBrutoAg;
+                default -> valorBrutoTotal;
+            };
+
+            // Determinar base de cálculo
+
+            BigDecimal montoDeducido = baseCalculo
                     .multiply(ded.porcentaje())
                     .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
 
-            BigDecimal montoDeducidoBob = montoDeducido.multiply(tipoCambio).setScale(4, RoundingMode.HALF_UP);
+            BigDecimal montoDeducidoBob = montoDeducido
+                    .multiply(tipoCambio)
+                    .setScale(4, RoundingMode.HALF_UP);
 
             deduccionesResult.add(new DeduccionResult(
-                    ded.concepto(), ded.porcentaje(), ded.tipoDeduccion(),
-                    montoDeducido, montoDeducidoBob, ded.descripcion(), orden++
+                    ded.concepto(),
+                    ded.porcentaje(),
+                    ded.tipoDeduccion(),
+                    montoDeducido,
+                    montoDeducidoBob,
+                    ded.descripcion(),
+                    ded.baseCalculo(),
+                    ded.orden()
             ));
 
             totalDeduccionesUsd = totalDeduccionesUsd.add(montoDeducido);
         }
 
-        // 4. Valor neto
-        BigDecimal valorNetoUsd = valorBrutoUsd.subtract(totalDeduccionesUsd).setScale(4, RoundingMode.HALF_UP);
-        BigDecimal valorNetoBob = valorNetoUsd.multiply(tipoCambio).setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorNetoUsd = valorBrutoTotal.subtract(totalDeduccionesUsd)
+                .setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorNetoBob = valorNetoUsd.multiply(tipoCambio)
+                .setScale(4, RoundingMode.HALF_UP);
 
+        // Precio ajustado = valorBrutoPrincipal / pesoTms (se calcula afuera)
         return new CalculoVentaResult(
-                precioAjustado, valorBrutoUsd, totalDeduccionesUsd,
-                valorNetoUsd, valorNetoBob, deduccionesResult
+                null, // precioAjustado - se calcula en VentaSocioBl
+                valorBrutoTotal,
+                totalDeduccionesUsd,
+                valorNetoUsd,
+                valorNetoBob,
+                deduccionesResult
         );
     }
+
+    // ==================== CÁLCULOS DE VENTA ====================
+
 
     /**
      * Input para cada deducción (viene del frontend via VentaCierreDto)
      * Usa los mismos nombres de campo que LiquidacionDeduccion entity
      */
     public record DeduccionInput(
-            String concepto,        // maps to LiquidacionDeduccion.concepto
-            BigDecimal porcentaje,  // maps to LiquidacionDeduccion.porcentaje
-            String tipoDeduccion,   // maps to LiquidacionDeduccion.tipoDeduccion
-            String descripcion      // maps to LiquidacionDeduccion.descripcion
+            String concepto,
+            BigDecimal porcentaje,
+            String tipoDeduccion,
+            String descripcion,
+            String baseCalculo,
+            Integer orden
     ) {}
 
     /**
@@ -187,6 +197,7 @@ public class LiquidacionVentaBl {
             BigDecimal montoDeducidoUsd,
             BigDecimal montoDeducidoBob,
             String descripcion,
+            String baseCalculo,
             int orden
     ) {}
 
