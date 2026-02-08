@@ -208,7 +208,7 @@ public class VentaComercializadoraController {
      * GET /comercializadora/ventas/{id}
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> obtenerDetalle(
+    public ResponseEntity<Map<String, Object>> obtenerDetalleCompleto(
             @PathVariable Integer id,
             @RequestHeader("Authorization") String token
     ) {
@@ -216,10 +216,10 @@ public class VentaComercializadoraController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            VentaLiquidacionResponseDto venta = ventaComercializadoraBl.obtenerDetalleVenta(id, usuarioId);
+            VentaLiquidacionDetalleDto detalle = ventaComercializadoraBl.obtenerDetalleCompletoVenta(id, usuarioId);
 
             response.put("success", true);
-            response.put("data", venta);
+            response.put("data", detalle);
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {

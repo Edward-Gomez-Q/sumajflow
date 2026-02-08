@@ -49,7 +49,15 @@ public class VentaComercializadoraBl {
 
         liq.setEstado("aprobado");
         liq.setFechaAprobacion(LocalDateTime.now());
-        appendObs(liq, "APROBADO por comercializadora: " + LocalDateTime.now());
+        liquidacionVentaBl.agregarObservacion(
+                liq,
+                "aprobado",
+                "Venta aprobada por comercializadora",
+                null,
+                "comercializadora",
+                "pendiente_aprobacion",
+                null
+        );
         liquidacionRepository.save(liq);
 
         notificarSocio(liq, "Venta aprobada",
@@ -501,5 +509,11 @@ public class VentaComercializadoraBl {
         return list.stream().filter(l -> estado.equals(l.getEstado()))
                 .map(Liquidacion::getValorNetoBob).filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public VentaLiquidacionDetalleDto obtenerDetalleCompletoVenta(Integer liquidacionId, Integer usuarioId) {
+        Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
+        Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, com);
+        return liquidacionVentaBl.convertirADtoDetallado(liquidacion);
     }
 }

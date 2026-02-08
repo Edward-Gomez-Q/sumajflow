@@ -654,8 +654,16 @@ public class VentaSocioBl {
         liquidacion.setEstado("cerrado");
 
         if (cierreDto.getObservaciones() != null && !cierreDto.getObservaciones().isBlank()) {
-            String obs = liquidacion.getObservaciones() != null ? liquidacion.getObservaciones() : "";
-            liquidacion.setObservaciones(obs + " | CIERRE LOTE: " + cierreDto.getObservaciones());
+
+                liquidacionVentaBl.agregarObservacion(
+                        liquidacion,
+                        "cerrado",
+                        "Venta cerrada por el socio",
+                        cierreDto.getObservaciones(),
+                        "socio",
+                        "esperando_cierre_venta",
+                        null
+                );
         }
 
         liquidacionRepository.save(liquidacion);
@@ -1487,5 +1495,11 @@ public class VentaSocioBl {
 
     private long contarPorEstado(List<Liquidacion> liquidaciones, String estado) {
         return liquidaciones.stream().filter(l -> estado.equals(l.getEstado())).count();
+    }
+
+    public VentaLiquidacionDetalleDto obtenerDetalleCompletoVenta(Integer liquidacionId, Integer usuarioId) {
+        Socio socio = obtenerSocioDelUsuario(usuarioId);
+        Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, socio);
+        return liquidacionVentaBl.convertirADtoDetallado(liquidacion);
     }
 }

@@ -209,7 +209,7 @@ public class VentaSocioController {
      * GET /socio/ventas/{id}
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> obtenerDetalle(
+    public ResponseEntity<Map<String, Object>> obtenerDetalleCompleto(
             @PathVariable Integer id,
             @RequestHeader("Authorization") String token
     ) {
@@ -217,10 +217,10 @@ public class VentaSocioController {
 
         try {
             Integer usuarioId = extractUsuarioId(token);
-            VentaLiquidacionResponseDto venta = ventaSocioBl.obtenerDetalleVenta(id, usuarioId);
+            VentaLiquidacionDetalleDto detalle = ventaSocioBl.obtenerDetalleCompletoVenta(id, usuarioId);
 
             response.put("success", true);
-            response.put("data", venta);
+            response.put("data", detalle);
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {

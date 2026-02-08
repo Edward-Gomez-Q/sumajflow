@@ -99,7 +99,9 @@ public class Liquidacion implements Serializable {
     @Column(name = "url_comprobante", length = 200)
     private String urlComprobante;
 
-    @Column(name = "observaciones", columnDefinition = "text")
+    // CAMBIO: Ahora es JSONB en lugar de TEXT
+    @Column(name = "observaciones", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String observaciones;
 
     @Size(max = 50)
@@ -120,7 +122,6 @@ public class Liquidacion implements Serializable {
     @JoinColumn(name = "socio_id", nullable = false)
     private Socio socioId;
 
-    // NUEVO: Relación con comercializadora (nullable - solo para ventas)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "comercializadora_id")
     private Comercializadora comercializadoraId;
@@ -195,6 +196,10 @@ public class Liquidacion implements Serializable {
         }
         if (totalServiciosAdicionales == null) {
             totalServiciosAdicionales = BigDecimal.ZERO;
+        }
+        // Inicializar observaciones como array vacío
+        if (observaciones == null) {
+            observaciones = "[]";
         }
     }
 }

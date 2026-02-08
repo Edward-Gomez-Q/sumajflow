@@ -13,6 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.dto.ingenio.LoteSimpleDto;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionDetalleDto;
 import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionResponseDto;
 import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionResponseDto.*;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -343,6 +344,660 @@ public class LiquidacionVentaBl {
         return dto;
     }
 
+
+    /**
+     * Convertir liquidación a DTO DETALLADO con toda la información de cálculos
+     */
+    public VentaLiquidacionDetalleDto convertirADtoDetallado(Liquidacion liquidacion) {
+        log.debug("Convirtiendo liquidación ID: {} a DTO detallado", liquidacion.getId());
+
+        VentaLiquidacionDetalleDto dto = VentaLiquidacionDetalleDto.builder().build();
+
+        // ========== INFORMACIÓN BÁSICA ==========
+        dto.setId(liquidacion.getId());
+        dto.setTipoLiquidacion(liquidacion.getTipoLiquidacion());
+        dto.setEstado(liquidacion.getEstado());
+        dto.setCreatedAt(liquidacion.getCreatedAt());
+        dto.setUpdatedAt(liquidacion.getUpdatedAt());
+
+        // ========== PARTES INVOLUCRADAS ==========
+        dto.setSocio(mapearSocioInfo(liquidacion.getSocioId()));
+        if (liquidacion.getComercializadoraId() != null) {
+            dto.setComercializadora(mapearComercializadoraInfo(liquidacion.getComercializadoraId()));
+        }
+
+        // ========== ITEMS EN VENTA ==========
+        if (TIPO_VENTA_CONCENTRADO.equals(liquidacion.getTipoLiquidacion())) {
+            dto.setConcentrados(mapearConcentradosDetalle(liquidacion));
+        } else {
+            dto.setLotes(mapearLotesDetalle(liquidacion));
+        }
+
+        // ========== PESOS ==========
+        dto.setPesos(mapearPesos(liquidacion));
+
+        // ========== REPORTES QUÍMICOS ==========
+        dto.setReportesQuimicos(mapearReportesQuimicosDetalle(liquidacion));
+
+        // ========== COTIZACIONES ==========
+        dto.setCotizaciones(mapearCotizacionesDetalle(liquidacion));
+
+        // ========== VALORACIÓN ==========
+        dto.setValoracion(mapearValoracionDetalle(liquidacion));
+
+        // ========== DEDUCCIONES ==========
+        dto.setDeducciones(mapearDeduccionesDetalle(liquidacion));
+
+        // ========== RESULTADO FINAL ==========
+        dto.setResultadoFinal(mapearResultadoFinal(liquidacion));
+
+        // ========== PAGO ==========
+        dto.setPago(mapearPagoInfo(liquidacion));
+
+        // ========== HISTORIAL OBSERVACIONES ==========
+        dto.setHistorialObservaciones(mapearHistorialObservaciones(liquidacion));
+
+        return dto;
+    }
+
+// ========== MÉTODOS AUXILIARES DE MAPEO ==========
+
+    private VentaLiquidacionDetalleDto.SocioInfoDto mapearSocioInfo(Socio socio) {
+        Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
+
+        return VentaLiquidacionDetalleDto.SocioInfoDto.builder()
+                .id(socio.getId())
+                .nombres(persona != null ? persona.getNombres() : null)
+                .apellidos(persona != null ?
+                        persona.getPrimerApellido() +
+                                (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : "")
+                        : null)
+                .ci(persona != null ? persona.getCi() : null)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ComercializadoraInfoDto mapearComercializadoraInfo(Comercializadora comercializadora) {
+        return VentaLiquidacionDetalleDto.ComercializadoraInfoDto.builder()
+                .id(comercializadora.getId())
+                .razonSocial(comercializadora.getRazonSocial())
+                .nit(comercializadora.getNit())
+                .departamento(comercializadora.getDepartamento())
+                .municipio(comercializadora.getMunicipio())
+                .build();
+    }
+
+    private List<VentaLiquidacionDetalleDto.ConcentradoDetalleDto> mapearConcentradosDetalle(Liquidacion liquidacion) {
+        // Deduplicar concentrados
+        return liquidacion.getLiquidacionConcentradoList().stream()
+                .map(LiquidacionConcentrado::getConcentradoId)
+                .distinct()
+                .map(c -> VentaLiquidacionDetalleDto.ConcentradoDetalleDto.builder()
+                        .id(c.getId())
+                        .codigoConcentrado(c.getCodigoConcentrado())
+                        .mineralPrincipal(c.getMineralPrincipal())
+                        .numeroSacos(c.getNumeroSacos())
+                        .pesoInicial(c.getPesoInicial())
+                        .pesoFinal(c.getPesoFinal())
+                        .pesoTmh(c.getPesoTmh())
+                        .pesoTms(c.getPesoTms())
+                        .merma(c.getMerma())
+                        .porcentajeMerma(c.getPorcentajeMerma())
+                        .estado(c.getEstado())
+                        .ingenioNombre(c.getIngenioMineroId() != null ? c.getIngenioMineroId().getRazonSocial() : null)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private List<VentaLiquidacionDetalleDto.LoteDetalleDto> mapearLotesDetalle(Liquidacion liquidacion) {
+        return liquidacion.getLiquidacionLoteList().stream()
+                .map(LiquidacionLote::getLotesId)
+                .distinct()
+                .map(l -> VentaLiquidacionDetalleDto.LoteDetalleDto.builder()
+                        .id(l.getId())
+                        .minaNombre(l.getMinasId().getNombre())
+                        .tipoMineral(l.getTipoMineral())
+                        .pesoTotalReal(l.getPesoTotalReal())
+                        .estado(l.getEstado())
+                        .fechaCreacion(l.getFechaCreacion())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private VentaLiquidacionDetalleDto.PesosDto mapearPesos(Liquidacion liquidacion) {
+        Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
+
+        BigDecimal porcentajeHumedad = null;
+        String pesoUsado = "Peso Final TMS";
+
+        // Obtener % humedad del reporte acordado
+        if (extras.containsKey("reporte_acordado")) {
+            Map<String, Object> acordado = (Map<String, Object>) extras.get("reporte_acordado");
+            if (acordado.containsKey("porcentaje_h2o")) {
+                porcentajeHumedad = toBigDecimal(acordado.get("porcentaje_h2o"));
+            }
+        }
+
+        // Determinar qué peso se usó
+        if (liquidacion.getPesoFinalTms() != null && liquidacion.getPesoFinalTms().compareTo(BigDecimal.ZERO) > 0) {
+            pesoUsado = "Peso Final TMS (con merma aplicada)";
+        } else if (liquidacion.getPesoTms() != null && liquidacion.getPesoTms().compareTo(BigDecimal.ZERO) > 0) {
+            pesoUsado = "Peso TMS (sin merma final)";
+        } else if (liquidacion.getPesoTmh() != null) {
+            pesoUsado = "Peso TMH (toneladas húmedas)";
+        }
+
+        return VentaLiquidacionDetalleDto.PesosDto.builder()
+                .pesoTotalEntrada(liquidacion.getPesoTotalEntrada())
+                .pesoTmh(liquidacion.getPesoTmh())
+                .pesoTms(liquidacion.getPesoTms())
+                .pesoFinalTms(liquidacion.getPesoFinalTms())
+                .porcentajeHumedad(porcentajeHumedad)
+                .pesoUsadoEnCalculo(pesoUsado)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ReportesQuimicosDto mapearReportesQuimicosDetalle(Liquidacion liquidacion) {
+        VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto reporteSocio = null;
+        VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto reporteCom = null;
+        VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto reporteAcordado = null;
+
+        // Obtener reportes de socio y comercializadora
+        if (TIPO_VENTA_CONCENTRADO.equals(liquidacion.getTipoLiquidacion())) {
+            for (LiquidacionConcentrado lc : liquidacion.getLiquidacionConcentradoList()) {
+                ReporteQuimico rq = lc.getReporteQuimicoId();
+                if (rq != null) {
+                    if (Boolean.TRUE.equals(rq.getSubidoPorSocio()) && reporteSocio == null) {
+                        reporteSocio = mapearReporteQuimicoDetalle(rq);
+                    } else if (Boolean.TRUE.equals(rq.getSubidoPorComercializadora()) && reporteCom == null) {
+                        reporteCom = mapearReporteQuimicoDetalle(rq);
+                    }
+                }
+            }
+        } else {
+            for (LiquidacionLote ll : liquidacion.getLiquidacionLoteList()) {
+                ReporteQuimico rq = ll.getReporteQuimicoId();
+                if (rq != null) {
+                    if (Boolean.TRUE.equals(rq.getSubidoPorSocio()) && reporteSocio == null) {
+                        reporteSocio = mapearReporteQuimicoDetalle(rq);
+                    } else if (Boolean.TRUE.equals(rq.getSubidoPorComercializadora()) && reporteCom == null) {
+                        reporteCom = mapearReporteQuimicoDetalle(rq);
+                    }
+                }
+            }
+        }
+
+        // Obtener reporte acordado del JSON
+        Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
+        if (extras.containsKey("reporte_acordado")) {
+            reporteAcordado = mapearReporteAcordado(extras, liquidacion.getTipoLiquidacion());
+        }
+
+        // Calcular diferencias
+        VentaLiquidacionDetalleDto.DiferenciasReportesDto diferencias = null;
+        if (reporteSocio != null && reporteCom != null && reporteAcordado != null) {
+            diferencias = calcularDiferenciasReportes(reporteSocio, reporteCom, reporteAcordado);
+        }
+
+        return VentaLiquidacionDetalleDto.ReportesQuimicosDto.builder()
+                .reporteSocio(reporteSocio)
+                .reporteComercializadora(reporteCom)
+                .reporteAcordado(reporteAcordado)
+                .diferencias(diferencias)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto mapearReporteQuimicoDetalle(ReporteQuimico rq) {
+        String origen = Boolean.TRUE.equals(rq.getSubidoPorSocio()) ? "socio" : "comercializadora";
+
+        return VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto.builder()
+                .id(rq.getId())
+                .numeroReporte(rq.getNumeroReporte())
+                .origen(origen)
+                .laboratorio(rq.getLaboratorio())
+                .fechaEmpaquetado(rq.getFechaEmpaquetado())
+                .fechaRecepcionLaboratorio(rq.getFechaRecepcionLaboratorio())
+                .fechaSalidaLaboratorio(rq.getFechaSalidaLaboratorio())
+                .fechaAnalisis(rq.getFechaAnalisis())
+                .leyMineralPrincipal(rq.getLeyMineralPrincipal())
+                .leyAgGmt(rq.getLeyAgGmt())
+                .leyAgDm(rq.getLeyAgDm())
+                .leyPb(rq.getLeyPb())
+                .leyZn(rq.getLeyZn())
+                .porcentajeH2o(rq.getPorcentajeH2o())
+                .numeroSacos(rq.getNumeroSacos())
+                .pesoPorSaco(rq.getPesoPorSaco())
+                .tipoEmpaque(rq.getTipoEmpaque())
+                .urlPdf(rq.getUrlPdf())
+                .observacionesLaboratorio(rq.getObservacionesLaboratorio())
+                .estado(rq.getEstado())
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto mapearReporteAcordado(
+            Map<String, Object> extras,
+            String tipoVenta
+    ) {
+        Map<String, Object> acordado = (Map<String, Object>) extras.get("reporte_acordado");
+
+        return VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto.builder()
+                .origen("acordado")
+                .leyMineralPrincipal(toBigDecimal(acordado.get("ley_mineral_principal")))
+                .leyAgGmt(toBigDecimal(acordado.get("ley_ag_gmt")))
+                .leyAgDm(toBigDecimal(acordado.get("ley_ag_dm")))
+                .leyPb(toBigDecimal(acordado.get("ley_pb")))
+                .leyZn(toBigDecimal(acordado.get("ley_zn")))
+                .porcentajeH2o(toBigDecimal(acordado.get("porcentaje_h2o")))
+                .estado("acordado")
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.DiferenciasReportesDto calcularDiferenciasReportes(
+            VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto socio,
+            VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto com,
+            VentaLiquidacionDetalleDto.ReporteQuimicoDetalleDto acordado
+    ) {
+        BigDecimal difPrincipal = BigDecimal.ZERO;
+        BigDecimal difAg = BigDecimal.ZERO;
+        BigDecimal difHumedad = BigDecimal.ZERO;
+
+        if (socio.getLeyMineralPrincipal() != null && com.getLeyMineralPrincipal() != null) {
+            difPrincipal = socio.getLeyMineralPrincipal().subtract(com.getLeyMineralPrincipal()).abs();
+        } else if (socio.getLeyPb() != null && com.getLeyPb() != null) {
+            difPrincipal = socio.getLeyPb().subtract(com.getLeyPb()).abs();
+        }
+
+        if (socio.getLeyAgGmt() != null && com.getLeyAgGmt() != null) {
+            difAg = socio.getLeyAgGmt().subtract(com.getLeyAgGmt()).abs();
+        } else if (socio.getLeyAgDm() != null && com.getLeyAgDm() != null) {
+            difAg = socio.getLeyAgDm().subtract(com.getLeyAgDm()).abs();
+        }
+
+        if (socio.getPorcentajeH2o() != null && com.getPorcentajeH2o() != null) {
+            difHumedad = socio.getPorcentajeH2o().subtract(com.getPorcentajeH2o()).abs();
+        }
+
+        boolean requiereRevision = difPrincipal.compareTo(new BigDecimal("5")) > 0;
+        String mensaje = requiereRevision
+                ? String.format("Diferencia de %.2f%% en ley principal excede el límite de 5%%", difPrincipal)
+                : "Reportes dentro del rango aceptable";
+
+        return VentaLiquidacionDetalleDto.DiferenciasReportesDto.builder()
+                .diferenciaLeyPrincipal(difPrincipal)
+                .diferenciaLeyAg(difAg)
+                .diferenciaHumedad(difHumedad)
+                .requiereRevision(requiereRevision)
+                .mensaje(mensaje)
+                .build();
+    }
+
+    private List<VentaLiquidacionDetalleDto.CotizacionDetalleDto> mapearCotizacionesDetalle(Liquidacion liquidacion) {
+        return liquidacion.getCotizacionesList().stream()
+                .map(cot -> VentaLiquidacionDetalleDto.CotizacionDetalleDto.builder()
+                        .mineral(cot.getMineral())
+                        .cotizacion(cot.getCotizacionUsd())
+                        .unidad(cot.getUnidad())
+                        .fuente(cot.getFuente())
+                        .fecha(cot.getFechaCotizacion() != null ?
+                                cot.getFechaCotizacion().atStartOfDay() : null)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private VentaLiquidacionDetalleDto.ValoracionDetalleDto mapearValoracionDetalle(Liquidacion liquidacion) {
+        Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
+        String tipoVenta = liquidacion.getTipoLiquidacion();
+        String mineralPrincipal = (String) extras.get("mineral_principal");
+
+        VentaLiquidacionDetalleDto.ValoracionDetalleDto valoracion =
+                VentaLiquidacionDetalleDto.ValoracionDetalleDto.builder()
+                        .tipoVenta(tipoVenta)
+                        .mineralPrincipal(mineralPrincipal)
+                        .build();
+
+        if (TIPO_VENTA_CONCENTRADO.equals(tipoVenta)) {
+            // VENTA_CONCENTRADO
+            valoracion.setValoracionMineralPrincipal(construirValoracionMineral(
+                    mineralPrincipal,
+                    toBigDecimal(extras.get("ley_mineral_principal_promedio")),
+                    liquidacion.getCostoPorTonelada(),
+                    toBigDecimal(extras.get("valor_principal_usd_ton")),
+                    liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
+                            liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
+                    toBigDecimal(extras.get("valor_bruto_principal_usd"))
+            ));
+
+            valoracion.setValoracionPlata(construirValoracionPlata(
+                    toBigDecimal(extras.get("ley_ag_gmt")),
+                    "g/MT",
+                    toBigDecimal(extras.get("contenido_ag_oz_ton")),
+                    obtenerCotizacionAg(liquidacion),
+                    null,
+                    toBigDecimal(extras.get("valor_ag_usd_ton")),
+                    liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
+                            liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
+                    toBigDecimal(extras.get("valor_bruto_ag_usd"))
+            ));
+
+            valoracion.setValorTotalUsdPorTon(toBigDecimal(extras.get("valor_total_usd_ton")));
+
+        } else {
+            // VENTA_LOTE_COMPLEJO
+            BigDecimal pesoTon = liquidacion.getPesoTmh();
+
+            // Pb
+            if (extras.containsKey("ley_pb") && extras.containsKey("precio_por_ton_pb")) {
+                valoracion.setValoracionPb(construirValoracionMineralLote(
+                        "Pb",
+                        toBigDecimal(extras.get("ley_pb")),
+                        toBigDecimal(extras.get("precio_unitario_pb")),
+                        toBigDecimal(extras.get("precio_por_ton_pb")),
+                        pesoTon,
+                        toBigDecimal(extras.get("valor_bruto_pb"))
+                ));
+            }
+
+            // Zn
+            if (extras.containsKey("ley_zn") && extras.containsKey("precio_por_ton_zn")) {
+                valoracion.setValoracionZn(construirValoracionMineralLote(
+                        "Zn",
+                        toBigDecimal(extras.get("ley_zn")),
+                        toBigDecimal(extras.get("precio_unitario_zn")),
+                        toBigDecimal(extras.get("precio_por_ton_zn")),
+                        pesoTon,
+                        toBigDecimal(extras.get("valor_bruto_zn"))
+                ));
+            }
+
+            // Ag
+            if (extras.containsKey("ley_ag_dm") && extras.containsKey("precio_por_ton_ag")) {
+                valoracion.setValoracionAgDm(construirValoracionPlataLote(
+                        toBigDecimal(extras.get("ley_ag_dm")),
+                        toBigDecimal(extras.get("precio_unitario_ag")),
+                        toBigDecimal(extras.get("precio_por_ton_ag")),
+                        pesoTon,
+                        toBigDecimal(extras.get("valor_bruto_ag"))
+                ));
+            }
+
+            // Sumar valores
+            BigDecimal valorTotal = BigDecimal.ZERO;
+            if (extras.containsKey("valor_bruto_pb")) {
+                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_pb")));
+            }
+            if (extras.containsKey("valor_bruto_zn")) {
+                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_zn")));
+            }
+            if (extras.containsKey("valor_bruto_ag")) {
+                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_ag")));
+            }
+
+            valoracion.setValorTotalUsdPorTon(
+                    pesoTon != null && pesoTon.compareTo(BigDecimal.ZERO) > 0
+                            ? valorTotal.divide(pesoTon, 4, RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO
+            );
+        }
+
+        valoracion.setValorBrutoTotalUsd(liquidacion.getValorBrutoUsd());
+
+        return valoracion;
+    }
+
+    private VentaLiquidacionDetalleDto.ValoracionMineralDto construirValoracionMineral(
+            String mineral,
+            BigDecimal ley,
+            BigDecimal cotizacion,
+            BigDecimal valorUsdPorTon,
+            BigDecimal pesoTon,
+            BigDecimal valorBruto
+    ) {
+        String formula = String.format(
+                "(%s USD/ton × %s%%) ÷ 100 = %s USD/ton × %s ton = %s USD",
+                cotizacion, ley, valorUsdPorTon, pesoTon, valorBruto
+        );
+
+        return VentaLiquidacionDetalleDto.ValoracionMineralDto.builder()
+                .mineral(mineral)
+                .ley(ley)
+                .cotizacionInternacional(cotizacion)
+                .valorUsdPorTon(valorUsdPorTon)
+                .pesoToneladas(pesoTon)
+                .valorBrutoUsd(valorBruto)
+                .formulaAplicada(formula)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ValoracionMineralDto construirValoracionMineralLote(
+            String mineral,
+            BigDecimal ley,
+            BigDecimal precioUnitario,
+            BigDecimal precioPorTon,
+            BigDecimal pesoTon,
+            BigDecimal valorBruto
+    ) {
+        String formula = String.format(
+                "%s USD × %s%% = %s USD/ton × %s ton = %s USD",
+                precioUnitario, ley, precioPorTon, pesoTon, valorBruto
+        );
+
+        return VentaLiquidacionDetalleDto.ValoracionMineralDto.builder()
+                .mineral(mineral)
+                .ley(ley)
+                .cotizacionInternacional(precioUnitario)
+                .valorUsdPorTon(precioPorTon)
+                .pesoToneladas(pesoTon)
+                .valorBrutoUsd(valorBruto)
+                .formulaAplicada(formula)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ValoracionPlataDto construirValoracionPlata(
+            BigDecimal leyAg,
+            String unidad,
+            BigDecimal contenidoOz,
+            BigDecimal cotizacionOz,
+            BigDecimal cotizacionDm,
+            BigDecimal valorUsdPorTon,
+            BigDecimal pesoTon,
+            BigDecimal valorBruto
+    ) {
+        String formula;
+        if ("g/MT".equals(unidad)) {
+            formula = String.format(
+                    "%s g/MT ÷ 31.1035 = %s oz/ton × %s USD/oz = %s USD/ton × %s ton = %s USD",
+                    leyAg, contenidoOz, cotizacionOz, valorUsdPorTon, pesoTon, valorBruto
+            );
+        } else {
+            formula = String.format(
+                    "%s DM × %s USD/DM = %s USD/ton × %s ton = %s USD",
+                    leyAg, cotizacionDm, valorUsdPorTon, pesoTon, valorBruto
+            );
+        }
+
+        return VentaLiquidacionDetalleDto.ValoracionPlataDto.builder()
+                .leyAg(leyAg)
+                .unidadLey(unidad)
+                .contenidoOzPorTon(contenidoOz)
+                .cotizacionUsdPorOz(cotizacionOz)
+                .cotizacionUsdPorDm(cotizacionDm)
+                .valorUsdPorTon(valorUsdPorTon)
+                .pesoToneladas(pesoTon)
+                .valorBrutoUsd(valorBruto)
+                .formulaAplicada(formula)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.ValoracionPlataDto construirValoracionPlataLote(
+            BigDecimal leyAgDm,
+            BigDecimal precioUnitario,
+            BigDecimal precioPorTon,
+            BigDecimal pesoTon,
+            BigDecimal valorBruto
+    ) {
+        String formula = String.format(
+                "%s DM × %s USD/DM = %s USD/ton × %s ton = %s USD",
+                leyAgDm, precioUnitario, precioPorTon, pesoTon, valorBruto
+        );
+
+        return VentaLiquidacionDetalleDto.ValoracionPlataDto.builder()
+                .leyAg(leyAgDm)
+                .unidadLey("DM")
+                .cotizacionUsdPorDm(precioUnitario)
+                .valorUsdPorTon(precioPorTon)
+                .pesoToneladas(pesoTon)
+                .valorBrutoUsd(valorBruto)
+                .formulaAplicada(formula)
+                .build();
+    }
+
+    private BigDecimal obtenerCotizacionAg(Liquidacion liquidacion) {
+        return liquidacion.getCotizacionesList().stream()
+                .filter(c -> "Ag".equals(c.getMineral()))
+                .findFirst()
+                .map(LiquidacionCotizacion::getCotizacionUsd)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private VentaLiquidacionDetalleDto.DeduccionesDetalleDto mapearDeduccionesDetalle(Liquidacion liquidacion) {
+        List<VentaLiquidacionDetalleDto.DeduccionItemDto> items = liquidacion.getDeduccionesList().stream()
+                .sorted(Comparator.comparingInt(d -> d.getOrden() != null ? d.getOrden() : 0))
+                .map(d -> {
+                    BigDecimal montoBob = d.getMontoDeducido() != null && liquidacion.getTipoCambio() != null
+                            ? d.getMontoDeducido().multiply(liquidacion.getTipoCambio()).setScale(4, RoundingMode.HALF_UP)
+                            : BigDecimal.ZERO;
+
+                    // Determinar monto base según base_calculo
+                    BigDecimal montoBase = determinarMontoBase(liquidacion, d.getBaseCalculo());
+
+                    String formula = String.format(
+                            "%s × %s%% = %s USD",
+                            montoBase, d.getPorcentaje(), d.getMontoDeducido()
+                    );
+
+                    return VentaLiquidacionDetalleDto.DeduccionItemDto.builder()
+                            .orden(d.getOrden() != null ? d.getOrden() : 0)
+                            .concepto(d.getConcepto())
+                            .tipoDeduccion(d.getTipoDeduccion())
+                            .porcentaje(d.getPorcentaje())
+                            .baseCalculo(d.getBaseCalculo())
+                            .montoBaseUsd(montoBase)
+                            .montoDeducidoUsd(d.getMontoDeducido())
+                            .montoDeducidoBob(montoBob)
+                            .descripcion(d.getDescripcion())
+                            .formulaAplicada(formula)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        BigDecimal totalUsd = items.stream()
+                .map(VentaLiquidacionDetalleDto.DeduccionItemDto::getMontoDeducidoUsd)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalBob = items.stream()
+                .map(VentaLiquidacionDetalleDto.DeduccionItemDto::getMontoDeducidoBob)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal porcentajeTotal = items.stream()
+                .map(VentaLiquidacionDetalleDto.DeduccionItemDto::getPorcentaje)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return VentaLiquidacionDetalleDto.DeduccionesDetalleDto.builder()
+                .deducciones(items)
+                .totalDeduccionesUsd(totalUsd)
+                .totalDeduccionesBob(totalBob)
+                .porcentajeTotal(porcentajeTotal)
+                .build();
+    }
+
+    private BigDecimal determinarMontoBase(Liquidacion liquidacion, String baseCalculo) {
+        if (baseCalculo == null) return liquidacion.getValorBrutoUsd();
+
+        Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
+
+        return switch (baseCalculo) {
+            case "valor_bruto_principal" -> toBigDecimal(extras.get("valor_bruto_principal_usd"));
+            case "valor_bruto_ag" -> toBigDecimal(extras.get("valor_bruto_ag_usd"));
+            default -> liquidacion.getValorBrutoUsd();
+        };
+    }
+
+    private VentaLiquidacionDetalleDto.ResultadoFinalDto mapearResultadoFinal(Liquidacion liquidacion) {
+        BigDecimal porcentajeDed = BigDecimal.ZERO;
+        if (liquidacion.getValorBrutoUsd() != null && liquidacion.getValorBrutoUsd().compareTo(BigDecimal.ZERO) > 0) {
+            porcentajeDed = liquidacion.getTotalServiciosAdicionales() != null
+                    ? liquidacion.getTotalServiciosAdicionales()
+                    .multiply(BigDecimal.valueOf(100))
+                    .divide(liquidacion.getValorBrutoUsd(), 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+        }
+
+        BigDecimal porcentajePago = BigDecimal.valueOf(100).subtract(porcentajeDed);
+
+        return VentaLiquidacionDetalleDto.ResultadoFinalDto.builder()
+                .valorBrutoUsd(liquidacion.getValorBrutoUsd())
+                .totalDeduccionesUsd(liquidacion.getTotalServiciosAdicionales())
+                .valorNetoUsd(liquidacion.getValorNetoUsd())
+                .tipoCambio(liquidacion.getTipoCambio())
+                .valorNetoBob(liquidacion.getValorNetoBob())
+                .moneda(liquidacion.getMoneda())
+                .porcentajeDeduccionTotal(porcentajeDed)
+                .porcentajePagoSocio(porcentajePago)
+                .build();
+    }
+
+    private VentaLiquidacionDetalleDto.PagoInfoDto mapearPagoInfo(Liquidacion liquidacion) {
+        Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
+        LocalDateTime fechaCierre = null;
+
+        if (extras.containsKey("fecha_cierre")) {
+            try {
+                fechaCierre = LocalDateTime.parse(extras.get("fecha_cierre").toString());
+            } catch (Exception e) {
+                log.warn("Error parseando fecha_cierre", e);
+            }
+        }
+
+        return VentaLiquidacionDetalleDto.PagoInfoDto.builder()
+                .fechaAprobacion(liquidacion.getFechaAprobacion())
+                .fechaCierre(fechaCierre)
+                .fechaPago(liquidacion.getFechaPago())
+                .metodoPago(liquidacion.getMetodoPago())
+                .numeroComprobante(liquidacion.getNumeroComprobante())
+                .urlComprobante(liquidacion.getUrlComprobante())
+                .build();
+    }
+
+    private List<VentaLiquidacionDetalleDto.ObservacionDto> mapearHistorialObservaciones(Liquidacion liquidacion) {
+        List<Map<String, Object>> historial = obtenerHistorialObservaciones(liquidacion);
+
+        return historial.stream()
+                .map(obs -> {
+                    LocalDateTime timestamp = null;
+                    if (obs.containsKey("timestamp")) {
+                        try {
+                            timestamp = LocalDateTime.parse(obs.get("timestamp").toString());
+                        } catch (Exception e) {
+                            log.warn("Error parseando timestamp de observación", e);
+                        }
+                    }
+
+                    return VentaLiquidacionDetalleDto.ObservacionDto.builder()
+                            .estado((String) obs.get("estado"))
+                            .descripcion((String) obs.get("descripcion"))
+                            .observaciones((String) obs.get("observaciones"))
+                            .usuarioId((Integer) obs.get("usuario_id"))
+                            .tipoUsuario((String) obs.get("tipo_usuario"))
+                            .timestamp(timestamp)
+                            .estadoAnterior((String) obs.get("estado_anterior"))
+                            .metadataAdicional(obs.containsKey("metadata") ?
+                                    (Map<String, Object>) obs.get("metadata") : null)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
     // ==================== MAPEOS PRIVADOS ====================
 
     private void mapearConcentradosVenta(Liquidacion liquidacion, VentaLiquidacionResponseDto dto) {
@@ -361,7 +1016,6 @@ public class LiquidacionVentaBl {
                             .numeroSacos(c.getNumeroSacos())
                             .build();
                 })
-                // Deduplicar (puede haber 2 registros por concentrado: 1 reporte socio + 1 comercializadora)
                 .collect(Collectors.toMap(
                         ConcentradoVentaDto::getId,
                         c -> c,
@@ -454,13 +1108,70 @@ public class LiquidacionVentaBl {
      */
     private void mapearCotizacion(Liquidacion liquidacion, VentaLiquidacionResponseDto dto) {
         if (liquidacion.getCotizacionesList() != null && !liquidacion.getCotizacionesList().isEmpty()) {
-            LiquidacionCotizacion cot = liquidacion.getCotizacionesList().stream()
-                    .max(Comparator.comparing(LiquidacionCotizacion::getFechaCotizacion))
-                    .orElse(null);
+            liquidacion.getCotizacionesList().stream()
+                    .max(Comparator.comparing(LiquidacionCotizacion::getFechaCotizacion)).ifPresent(cot -> dto.setCotizacionInternacionalUsd(cot.getCotizacionUsd()));
 
-            if (cot != null) {
-                dto.setCotizacionInternacionalUsd(cot.getCotizacionUsd());
-            }
+        }
+    }
+
+    public void agregarObservacion(
+            Liquidacion liquidacion,
+            String estado,
+            String descripcion,
+            String observaciones,
+            String tipoUsuario,
+            String estadoAnterior,
+            Map<String, Object> metadataAdicional
+    ) {
+        List<Map<String, Object>> historial = obtenerHistorialObservaciones(liquidacion);
+
+        Map<String, Object> nuevaObservacion = new HashMap<>();
+        nuevaObservacion.put("estado", estado);
+        nuevaObservacion.put("descripcion", descripcion);
+        nuevaObservacion.put("observaciones", observaciones);
+        nuevaObservacion.put("tipo_usuario", tipoUsuario);
+        nuevaObservacion.put("timestamp", LocalDateTime.now().toString());
+
+        if (estadoAnterior != null) {
+            nuevaObservacion.put("estado_anterior", estadoAnterior);
+        }
+
+        if (metadataAdicional != null && !metadataAdicional.isEmpty()) {
+            nuevaObservacion.put("metadata", metadataAdicional);
+        }
+
+        historial.add(nuevaObservacion);
+        liquidacion.setObservaciones(convertirHistorialAJson(historial));
+    }
+
+    /**
+     * Obtener historial de observaciones desde JSONB
+     */
+    public List<Map<String, Object>> obtenerHistorialObservaciones(Liquidacion liquidacion) {
+        if (liquidacion.getObservaciones() == null || liquidacion.getObservaciones().isBlank()) {
+            return new ArrayList<>();
+        }
+
+        try {
+            return objectMapper.readValue(
+                    liquidacion.getObservaciones(),
+                    new TypeReference<List<Map<String, Object>>>() {}
+            );
+        } catch (JsonProcessingException e) {
+            log.error("Error al parsear historial de observaciones de liquidación ID: {}", liquidacion.getId(), e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Convertir historial a JSON
+     */
+    private String convertirHistorialAJson(List<Map<String, Object>> historial) {
+        try {
+            return objectMapper.writeValueAsString(historial);
+        } catch (JsonProcessingException e) {
+            log.error("Error al convertir historial a JSON", e);
+            return "[]";
         }
     }
 
