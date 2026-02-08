@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionResponseDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -26,12 +27,12 @@ public class ConcentradoResponseDto {
     private BigDecimal pesoFinal;
     private BigDecimal merma;
 
-    // Minerales - ACTUALIZADO
+    // Minerales
     private String mineralPrincipal;
-    private String mineralesSecundarios; // NUEVO: minerales secundarios/traza separados por comas
-    private Boolean loteOrigenMultiple; // NUEVO: indica si proviene de separación múltiple
+    private String mineralesSecundarios;
+    private Boolean loteOrigenMultiple;
 
-    // Sacos (opcional al inicio)
+    // Sacos
     private Integer numeroSacos;
 
     // Ingenio
@@ -58,5 +59,8 @@ public class ConcentradoResponseDto {
 
     // Observaciones
     private List<Map<String, Object>> observaciones;
-    private LiquidacionTollResponseDto liquidacionToll;
+
+    // Liquidaciones
+    private LiquidacionTollResponseDto liquidacionToll; // Para ingenio y socio
+    private List<VentaLiquidacionResponseDto> liquidacionesVenta; // Para comercializadora (✅ NUEVO)
 }

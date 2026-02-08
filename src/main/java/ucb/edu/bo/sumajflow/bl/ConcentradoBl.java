@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollIngenioBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionResponseDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -45,6 +46,9 @@ public class ConcentradoBl {
     protected final ObjectMapper objectMapper;
     protected final SimpMessagingTemplate messagingTemplate;
     private final LiquidacionTollBl liquidacionTollBl;
+
+    private final LiquidacionConcentradoRepository liquidacionConcentradoRepository;
+    private final LiquidacionVentaBl liquidacionVentaBl;
 
     // ==================== LISTAR CONCENTRADOS (GENÉRICO) ====================
 
@@ -273,6 +277,110 @@ public class ConcentradoBl {
         registro.put("ip_origen", ipOrigen);
         registro.put("timestamp", LocalDateTime.now().toString());
         return registro;
+    }
+
+    /**
+     * Convertir Concentrado a DTO SIN liquidación Toll (para comercializadora)
+     * Incluye liquidaciones de venta donde la comercializadora participa
+     */
+    public ConcentradoResponseDto convertirAResponseDtoParaComercializadora(
+            Concentrado concentrado,
+            Comercializadora comercializadora
+    ) {
+        ConcentradoResponseDto dto = new ConcentradoResponseDto();
+
+        // Datos básicos
+        dto.setId(concentrado.getId());
+        dto.setCodigoConcentrado(concentrado.getCodigoConcentrado());
+        dto.setEstado(concentrado.getEstado());
+        dto.setPesoInicial(concentrado.getPesoInicial());
+        dto.setPesoFinal(concentrado.getPesoFinal());
+        dto.setMerma(concentrado.getMerma());
+        dto.setMineralPrincipal(concentrado.getMineralPrincipal());
+        dto.setMineralesSecundarios(concentrado.getMineralesSecundarios());
+        dto.setLoteOrigenMultiple(concentrado.getLoteOrigenMultiple());
+        dto.setNumeroSacos(concentrado.getNumeroSacos());
+
+        // Datos del ingenio
+        dto.setIngenioId(concentrado.getIngenioMineroId().getId());
+        dto.setIngenioNombre(concentrado.getIngenioMineroId().getRazonSocial());
+
+        // Datos del socio propietario
+        Socio socio = concentrado.getSocioPropietarioId();
+        if (socio != null) {
+            dto.setSocioId(socio.getId());
+            Persona persona = personaRepository.findByUsuariosId(socio.getUsuariosId()).orElse(null);
+            if (persona != null) {
+                dto.setSocioNombres(persona.getNombres());
+                dto.setSocioApellidos(persona.getPrimerApellido() +
+                        (persona.getSegundoApellido() != null ? " " + persona.getSegundoApellido() : ""));
+                dto.setSocioCi(persona.getCi());
+            }
+        }
+
+        // Lotes relacionados
+        List<LoteSimpleDto> lotesDto = concentrado.getLoteConcentradoRelacionList().stream()
+                .map(relacion -> {
+                    Lotes lote = relacion.getLoteComplejoId();
+                    return LoteSimpleDto.builder()
+                            .id(lote.getId())
+                            .minaNombre(lote.getMinasId().getNombre())
+                            .tipoMineral(lote.getTipoMineral())
+                            .pesoTotalReal(lote.getPesoTotalReal())
+                            .estado(lote.getEstado())
+                            .build();
+                })
+                .collect(Collectors.toList());
+        dto.setLotes(lotesDto);
+
+        // Minerales
+        if (!concentrado.getLoteConcentradoRelacionList().isEmpty()) {
+            Lotes primerLote = concentrado.getLoteConcentradoRelacionList().getFirst().getLoteComplejoId();
+            List<LoteMinerales> loteMinerales = loteMineralesRepository.findByLotesId(primerLote);
+            dto.setMinerales(
+                    loteMinerales.stream()
+                            .map(lm -> new MineralInfoDto(
+                                    lm.getMineralesId().getId(),
+                                    lm.getMineralesId().getNombre(),
+                                    lm.getMineralesId().getNomenclatura()))
+                            .collect(Collectors.toList())
+            );
+        }
+
+        // Fechas
+        dto.setFechaInicio(concentrado.getFechaInicio());
+        dto.setFechaFin(concentrado.getFechaFin());
+        dto.setCreatedAt(concentrado.getCreatedAt());
+        dto.setUpdatedAt(concentrado.getUpdatedAt());
+
+        // Historial de observaciones
+        try {
+            List<Map<String, Object>> historial = objectMapper.readValue(
+                    concentrado.getObservaciones(),
+                    new TypeReference<List<Map<String, Object>>>() {}
+            );
+            dto.setObservaciones(historial.isEmpty() ? null : historial);
+        } catch (Exception e) {
+            log.warn("Error al parsear observaciones del concentrado ID: {}", concentrado.getId());
+            dto.setObservaciones(null);
+        }
+        dto.setLiquidacionToll(null);
+
+        List<VentaLiquidacionResponseDto> liquidacionesVenta =
+                liquidacionConcentradoRepository.findByConcentradoId(concentrado).stream()
+                        .map(LiquidacionConcentrado::getLiquidacionId)
+                        .filter(liq -> LiquidacionVentaBl.TIPOS_VENTA.contains(liq.getTipoLiquidacion()))
+                        .filter(liq -> liq.getComercializadoraId() != null
+                                && liq.getComercializadoraId().getId().equals(comercializadora.getId()))
+                        .filter(liq -> !liq.getEstado().equals("pendiente_aprobacion")
+                                && !liq.getEstado().equals("rechazado"))
+                        .distinct()
+                        .map(liquidacionVentaBl::convertirADto)
+                        .collect(Collectors.toList());
+
+        dto.setLiquidacionesVenta(liquidacionesVenta.isEmpty() ? null : liquidacionesVenta);
+
+        return dto;
     }
 
     /**

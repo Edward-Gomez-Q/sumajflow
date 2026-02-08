@@ -2,11 +2,13 @@ package ucb.edu.bo.sumajflow.bl.comercializadora;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.dto.ingenio.ConcentradoResponseDto;
 import ucb.edu.bo.sumajflow.dto.venta.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
@@ -15,6 +17,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Servicio de Venta para el ROL COMERCIALIZADORA
@@ -34,6 +37,7 @@ public class VentaComercializadoraBl {
     private final ComercializadoraRepository comercializadoraRepository;
     private final UsuariosRepository usuariosRepository;
     private final NotificacionBl notificacionBl;
+    private final ConcentradoBl concentradoBl;
 
     // ==================== APROBAR / RECHAZAR ====================
 
@@ -515,5 +519,98 @@ public class VentaComercializadoraBl {
         Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
         Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, com);
         return liquidacionVentaBl.convertirADtoDetallado(liquidacion);
+    }
+
+    // ==================== LISTAR Y CONSULTAR CONCENTRADOS ====================
+
+// ==================== LISTAR Y CONSULTAR CONCENTRADOS ====================
+
+    /**
+     * Listar concentrados de liquidaciones aprobadas por la comercializadora
+     */
+    @Transactional(readOnly = true)
+    public Page<ConcentradoResponseDto> listarConcentrados(
+            Integer usuarioId,
+            String estado,
+            String mineralPrincipal,
+            LocalDateTime fechaDesde,
+            LocalDateTime fechaHasta,
+            int page,
+            int size
+    ) {
+        log.debug("Comercializadora listando concentrados aprobados - Usuario ID: {}", usuarioId);
+
+        Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
+
+        // Obtener concentrados únicos de liquidaciones aprobadas
+        List<Concentrado> concentradosBase = liquidacionConcentradoRepository
+                .findDistinctConcentradosByComercializadoraAprobados(com);
+
+        log.debug("Total de concentrados aprobados encontrados: {}", concentradosBase.size());
+
+        List<Concentrado> concentradosFiltrados = concentradosBase.stream()
+                .filter(c -> aplicarFiltrosConcentrado(c, estado, mineralPrincipal, fechaDesde, fechaHasta))
+                .toList();
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), concentradosFiltrados.size());
+
+        List<ConcentradoResponseDto> concentradosDto = concentradosFiltrados
+                .subList(start, end)
+                .stream()
+                .map(c -> concentradoBl.convertirAResponseDtoParaComercializadora(c, com))
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(concentradosDto, pageable, concentradosFiltrados.size());
+    }
+
+    /**
+     * Obtener detalle completo de un concentrado
+     */
+    @Transactional(readOnly = true)
+    public ConcentradoResponseDto obtenerDetalleConcentrado(Integer concentradoId, Integer usuarioId) {
+        log.debug("Comercializadora obteniendo detalle de concentrado ID: {}", concentradoId);
+
+        Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
+        Concentrado concentrado = concentradoBl.obtenerConcentrado(concentradoId);
+
+        // Verificar que el concentrado esté en alguna liquidación aprobada de esta comercializadora
+        boolean tienePermiso = liquidacionConcentradoRepository.findByConcentradoId(concentrado)
+                .stream()
+                .anyMatch(lc -> {
+                    Liquidacion liq = lc.getLiquidacionId();
+                    return liq.getComercializadoraId() != null
+                            && liq.getComercializadoraId().getId().equals(com.getId())
+                            && !liq.getEstado().equals("pendiente_aprobacion")
+                            && !liq.getEstado().equals("rechazado");
+                });
+
+        if (!tienePermiso) {
+            throw new IllegalArgumentException(
+                    "No tienes permiso para ver este concentrado o aún no ha sido aprobado");
+        }
+
+        return concentradoBl.convertirAResponseDtoParaComercializadora(concentrado, com);
+    }
+
+    private boolean aplicarFiltrosConcentrado(
+            Concentrado c,
+            String estado,
+            String mineralPrincipal,
+            LocalDateTime fechaDesde,
+            LocalDateTime fechaHasta
+    ) {
+        if (estado != null && !estado.isEmpty() && !estado.equals(c.getEstado())) {
+            return false;
+        }
+        if (mineralPrincipal != null && !mineralPrincipal.isEmpty()
+                && !mineralPrincipal.equals(c.getMineralPrincipal())) {
+            return false;
+        }
+        if (fechaDesde != null && c.getCreatedAt().isBefore(fechaDesde)) {
+            return false;
+        }
+        return fechaHasta == null || !c.getCreatedAt().isAfter(fechaHasta);
     }
 }
