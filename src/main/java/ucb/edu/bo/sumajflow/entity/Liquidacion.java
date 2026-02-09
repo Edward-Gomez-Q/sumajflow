@@ -101,10 +101,9 @@ public class Liquidacion implements Serializable {
     @Column(name = "url_comprobante", length = 200)
     private String urlComprobante;
 
-    // CAMBIO: Ahora es JSONB en lugar de TEXT
     @Column(name = "observaciones", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
-    private String observaciones;
+    private String observaciones = "[]";
 
     @Size(max = 50)
     @Column(name = "estado", length = 50)

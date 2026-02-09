@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.bl.socio.VentaSocioBl;
 import ucb.edu.bo.sumajflow.dto.cooperativa.*;
 import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
 import ucb.edu.bo.sumajflow.dto.socio.AuditoriaLoteDto;
@@ -20,6 +21,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -47,6 +50,13 @@ public class LotesCooperativaBl {
     private final AsignacionCamionRepository asignacionCamionRepo;
     private final ObjectMapper objectMapper;
     private final LotesWebSocketBl lotesWebSocketBl;
+    private final VentaSocioBl ventaSocioBl;
+    private final LiquidacionLoteRepository liquidacionLoteRepository;
+    private final ConcentradoRepository concentradoRepository;
+    private final LiquidacionDeduccionRepository liquidacionDeduccionRepository;
+    private final LiquidacionConcentradoRepository liquidacionConcentradoRepository;
+
+
 
     // Constantes de estados
     private static final String ESTADO_PENDIENTE_COOPERATIVA = "Pendiente de aprobación cooperativa";
@@ -702,8 +712,190 @@ public class LotesCooperativaBl {
 
         dto.setCreatedAt(lote.getFechaCreacion());
         dto.setUpdatedAt(lote.getUpdatedAt());
+        if("Vendido a comercializadora".equals(lote.getEstado())) {
+            try {
+                List<DeduccionVentaDto> deducciones = obtenerDeduccionesDelLote(lote);
+                dto.setDeduccionesVenta(deducciones);
+            } catch (Exception e) {
+                log.warn("No se pudieron cargar las deducciones para el lote {}: {}",
+                        lote.getId(), e.getMessage());
+                dto.setDeduccionesVenta(new ArrayList<>());
+            }
+        }
+        if("Procesado".equals(lote.getEstado())) {
+            try {
+                List<ConcentradoVendidoDto> concentradosInfo = obtenerInformacionConcentrados(lote);
+                dto.setConcentradosVendidos(concentradosInfo);
+            } catch (Exception e) {
+                log.warn("No se pudo cargar información de concentrados para el lote {}: {}",
+                        lote.getId(), e.getMessage());
+                dto.setConcentradosVendidos(new ArrayList<>());
+            }
+        }
 
         return dto;
+    }
+    private List<ConcentradoVendidoDto> obtenerInformacionConcentrados(Lotes lote) {
+        List<ConcentradoVendidoDto> resultado = new ArrayList<>();
+
+        // Obtener los concentrados del lote
+        List<Concentrado> concentrados = concentradoRepository
+                .findByLoteConcentradoRelacionList_LoteComplejoId(lote);
+
+        if (concentrados.isEmpty()) {
+            log.warn("No se encontraron concentrados para el lote {}", lote.getId());
+            return resultado;
+        }
+
+        // Procesar cada concentrado
+        for (Concentrado concentrado : concentrados) {
+            ConcentradoVendidoDto concentradoDto = new ConcentradoVendidoDto();
+
+            concentradoDto.setConcentradoId(concentrado.getId());
+            concentradoDto.setCodigoConcentrado(concentrado.getCodigoConcentrado());
+            concentradoDto.setMineralPrincipal(concentrado.getMineralPrincipal());
+            concentradoDto.setEstado(concentrado.getEstado());
+
+            // Verificar si el concentrado está vendido
+            if ("vendido_a_comercializadora".equals(concentrado.getEstado())) {
+                concentradoDto.setMensajeEstado("Vendido");
+
+                // Obtener deducciones del concentrado
+                List<DeduccionVentaDto> deducciones = obtenerDeduccionesDelConcentrado(concentrado);
+                concentradoDto.setDeducciones(deducciones);
+
+            } else {
+                // Mapear el estado a un mensaje más amigable
+                String mensajeEstado = mapearEstadoConcentrado(concentrado.getEstado());
+                concentradoDto.setMensajeEstado(mensajeEstado);
+                concentradoDto.setDeducciones(new ArrayList<>());
+            }
+
+            resultado.add(concentradoDto);
+        }
+
+        return resultado;
+    }
+
+    /**
+     * Obtiene las deducciones de un concentrado vendido
+     */
+    private List<DeduccionVentaDto> obtenerDeduccionesDelConcentrado(Concentrado concentrado) {
+        // Buscar la liquidación del concentrado
+        List<LiquidacionConcentrado> liquidacionConcentrados =
+                liquidacionConcentradoRepository.findByConcentradoId(concentrado);
+
+        if (liquidacionConcentrados.isEmpty()) {
+            log.warn("No se encontró liquidación para el concentrado {}", concentrado.getId());
+            return new ArrayList<>();
+        }
+
+        // Obtener la liquidación con reporte químico
+        Liquidacion liquidacion = liquidacionConcentrados.stream()
+                .filter(lc -> lc.getReporteQuimicoId() != null)
+                .map(LiquidacionConcentrado::getLiquidacionId)
+                .findFirst()
+                .orElse(null);
+
+        if (liquidacion == null) {
+            log.warn("No se encontró liquidación con reporte químico para el concentrado {}",
+                    concentrado.getId());
+            return new ArrayList<>();
+        }
+
+        // Obtener las deducciones
+        List<LiquidacionDeduccion> deducciones = liquidacionDeduccionRepository
+                .findByLiquidacionIdOrderByOrdenAsc(liquidacion);
+
+        BigDecimal tipoCambio = liquidacion.getTipoCambio() != null
+                ? liquidacion.getTipoCambio()
+                : BigDecimal.ONE;
+
+        return deducciones.stream()
+                .map(ded -> new DeduccionVentaDto(
+                        ded.getConcepto(),
+                        ded.getTipoDeduccion(),
+                        ded.getPorcentaje(),
+                        ded.getMontoDeducido(),
+                        ded.getMontoDeducido().multiply(tipoCambio).setScale(2, RoundingMode.HALF_UP),
+                        ded.getBaseCalculo(),
+                        ded.getOrden(),
+                        ded.getDescripcion()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Mapea el estado técnico del concentrado a un mensaje amigable
+     */
+    private String mapearEstadoConcentrado(String estadoTecnico) {
+        if (estadoTecnico == null) {
+            return "Estado desconocido";
+        }
+
+        return switch (estadoTecnico) {
+            case "creado" -> "Creado - En espera de procesamiento";
+            case "listo_para_venta" -> "Listo para venta - Pendiente de negociación";
+            case "en_venta" -> "En proceso de venta";
+            case "vendido_a_comercializadora" -> "Vendido";
+            default -> "Estado: " + estadoTecnico;
+        };
+    }
+    private List<DeduccionVentaDto> obtenerDeduccionesDelLote(Lotes lote) {
+        Liquidacion liquidacion = null;
+
+        // Intentar primero como lote complejo
+        List<LiquidacionLote> liquidacionLotes = liquidacionLoteRepository.findByLotesId(lote);
+
+        if (!liquidacionLotes.isEmpty()) {
+            liquidacion = liquidacionLotes.stream()
+                    .filter(ll -> ll.getReporteQuimicoId() != null)
+                    .map(LiquidacionLote::getLiquidacionId)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        // Si no, intentar con concentrados
+        if (liquidacion == null) {
+            List<Concentrado> concentrados = concentradoRepository.findByLoteConcentradoRelacionList_LoteComplejoId(lote);
+
+            if (!concentrados.isEmpty()) {
+                Concentrado concentrado = concentrados.getFirst();
+                List<LiquidacionConcentrado> liquidacionConcentrados =
+                        liquidacionConcentradoRepository.findByConcentradoId(concentrado);
+
+                liquidacion = liquidacionConcentrados.stream()
+                        .filter(lc -> lc.getReporteQuimicoId() != null)
+                        .map(LiquidacionConcentrado::getLiquidacionId)
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
+
+        if (liquidacion == null) {
+            log.warn("No se encontró liquidación para el lote {}", lote.getId());
+            return new ArrayList<>();
+        }
+
+        List<LiquidacionDeduccion> deducciones = liquidacionDeduccionRepository
+                .findByLiquidacionIdOrderByOrdenAsc(liquidacion);
+
+        BigDecimal tipoCambio = liquidacion.getTipoCambio() != null
+                ? liquidacion.getTipoCambio()
+                : BigDecimal.ONE;
+
+        return deducciones.stream()
+                .map(ded -> new DeduccionVentaDto(
+                        ded.getConcepto(),
+                        ded.getTipoDeduccion(),
+                        ded.getPorcentaje(),
+                        ded.getMontoDeducido(),
+                        ded.getMontoDeducido().multiply(tipoCambio).setScale(2, RoundingMode.HALF_UP),
+                        ded.getBaseCalculo(),
+                        ded.getOrden(),
+                        ded.getDescripcion()
+                ))
+                .collect(Collectors.toList());
     }
 
     private LotePendienteDto convertToPendienteDto(Lotes lote) {

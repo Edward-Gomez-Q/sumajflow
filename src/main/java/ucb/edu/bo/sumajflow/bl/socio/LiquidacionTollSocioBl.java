@@ -5,9 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
-import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
-import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.bl.*;
 import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.LiquidacionPagoDto;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -37,6 +35,7 @@ public class LiquidacionTollSocioBl {
     private final SocioRepository socioRepository;
     private final NotificacionBl notificacionBl;
     private final ConcentradoBl concentradoBl;
+    private final LiquidacionVentaBl liquidacionVentaBl;
 
     // ==================== LISTAR LIQUIDACIONES ====================
 
@@ -113,8 +112,18 @@ public class LiquidacionTollSocioBl {
         liquidacion.setUrlComprobante(pagoDto.getUrlComprobante());
 
         if (pagoDto.getObservaciones() != null && !pagoDto.getObservaciones().isBlank()) {
-            String obsActuales = liquidacion.getObservaciones() != null ? liquidacion.getObservaciones() : "";
-            liquidacion.setObservaciones(obsActuales + " | PAGO: " + pagoDto.getObservaciones());
+            liquidacionVentaBl.agregarObservacion(
+                    liquidacion,
+                    "pagado",
+                    "Pago registrado por el socio",
+                    pagoDto.getObservaciones(),
+                    "socio",
+                    "esperando_pago",
+                    Map.of(
+                            "metodo_pago", pagoDto.getMetodoPago(),
+                            "numero_comprobante", pagoDto.getNumeroComprobante()
+                    )
+            );
         }
 
         liquidacionRepository.save(liquidacion);

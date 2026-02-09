@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ucb.edu.bo.sumajflow.entity.Concentrado;
 import ucb.edu.bo.sumajflow.entity.IngenioMinero;
+import ucb.edu.bo.sumajflow.entity.Lotes;
 import ucb.edu.bo.sumajflow.entity.Socio;
 
 import java.time.LocalDateTime;
@@ -26,6 +27,6 @@ public interface ConcentradoRepository extends JpaRepository<Concentrado, Intege
   @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Concentrado c WHERE c.codigoConcentrado = :codigo")
   boolean existsByCodigo(@Param("codigo") String codigo);
   List<Concentrado> findBySocioPropietarioIdAndEstado(Socio socio, String estado);
-
+  List<Concentrado> findByLoteConcentradoRelacionList_LoteComplejoId(Lotes lote);
 
 }

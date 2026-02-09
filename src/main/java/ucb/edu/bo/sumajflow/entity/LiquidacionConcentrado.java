@@ -41,11 +41,11 @@ public class LiquidacionConcentrado implements Serializable {
 
     // Relaciones
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "concentrado_id", nullable = false)
+    @JoinColumn(name = "concentrado_id")
     private Concentrado concentradoId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "liquidacion_id", nullable = false)
+    @JoinColumn(name = "liquidacion_id")
     private Liquidacion liquidacionId;
 
     // NUEVO: Relación con reporte_quimico

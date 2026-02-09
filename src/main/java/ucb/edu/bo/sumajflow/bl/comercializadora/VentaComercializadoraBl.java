@@ -7,7 +7,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
+import ucb.edu.bo.sumajflow.bl.LiquidacionesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
+import ucb.edu.bo.sumajflow.dto.comercializadora.ValidacionPreciosResponseDto;
 import ucb.edu.bo.sumajflow.dto.ingenio.ConcentradoResponseDto;
 import ucb.edu.bo.sumajflow.dto.venta.*;
 import ucb.edu.bo.sumajflow.entity.*;
@@ -38,10 +40,11 @@ public class VentaComercializadoraBl {
     private final UsuariosRepository usuariosRepository;
     private final NotificacionBl notificacionBl;
     private final ConcentradoBl concentradoBl;
+    private final TablaPreciosMineralBl tablaPreciosMineralBl;
+    private final LiquidacionesWebSocketBl liquidacionesWebSocketBl;
 
     // ==================== APROBAR / RECHAZAR ====================
 
-    @Transactional
     public VentaLiquidacionResponseDto aprobarVenta(Integer liquidacionId, Integer usuarioId) {
         log.info("Comercializadora aprobando venta - ID: {}", liquidacionId);
         Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
@@ -49,6 +52,25 @@ public class VentaComercializadoraBl {
 
         if (!"pendiente_aprobacion".equals(liq.getEstado())) {
             throw new IllegalArgumentException("Debe estar en estado 'pendiente_aprobacion'. Estado: " + liq.getEstado());
+        }
+
+        // ✅ VALIDACIÓN NUEVA: Para lotes complejos, verificar tabla de precios
+        if (LiquidacionVentaBl.TIPO_VENTA_LOTE_COMPLEJO.equals(liq.getTipoLiquidacion())) {
+            ValidacionPreciosResponseDto validacion = tablaPreciosMineralBl.validarConfiguracion(com.getId());
+
+            if (!validacion.getConfiguracionCompleta()) {
+                String errores = String.join(", ", validacion.getErrores());
+                throw new IllegalStateException(
+                        "No puedes aprobar esta venta de lote complejo. " +
+                                "Tu tabla de precios está incompleta: " + errores +
+                                ". Por favor, configúrala en la sección 'Tabla de Precios'."
+                );
+            }
+
+            if (!validacion.getAdvertencias().isEmpty()) {
+                log.warn("Advertencias en tabla de precios: {}",
+                        String.join(", ", validacion.getAdvertencias()));
+            }
         }
 
         liq.setEstado("aprobado");
@@ -68,10 +90,11 @@ public class VentaComercializadoraBl {
                 "La comercializadora " + com.getRazonSocial() + " ha aprobado tu solicitud. Ambos deben subir el reporte químico.",
                 "success");
 
+        liquidacionesWebSocketBl.publicarAprobacionVenta(liq);
+
         return liquidacionVentaBl.convertirADto(liq);
     }
 
-    @Transactional
     public VentaLiquidacionResponseDto rechazarVenta(Integer liquidacionId, String motivo, Integer usuarioId) {
         log.info("Comercializadora rechazando venta - ID: {}", liquidacionId);
         Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
@@ -82,13 +105,25 @@ public class VentaComercializadoraBl {
         }
 
         liq.setEstado("rechazado");
-        appendObs(liq, "RECHAZADO: " + (motivo != null ? motivo : "Sin motivo") + " | " + LocalDateTime.now());
+        liquidacionVentaBl.agregarObservacion(
+                liq,
+                "rechazado",
+                "Venta rechazada por comercializadora",
+                motivo != null ? motivo : "Sin motivo especificado",
+                "comercializadora",
+                "pendiente_aprobacion",
+                null
+        );
         liquidacionRepository.save(liq);
+
+
         revertirEstadoItems(liq);
 
         notificarSocio(liq, "Venta rechazada",
                 "La comercializadora " + com.getRazonSocial() + " ha rechazado. Motivo: " + (motivo != null ? motivo : "No especificado"),
                 "error");
+        liquidacionesWebSocketBl.publicarRechazoVenta(liq, motivo != null ? motivo : "Sin motivo especificado");
+
 
         return liquidacionVentaBl.convertirADto(liq);
     }
@@ -97,7 +132,6 @@ public class VentaComercializadoraBl {
      * Comercializadora sube su reporte químico.
      * Si el socio ya subió, se procede al promedio automático.
      */
-    @Transactional
     public VentaLiquidacionResponseDto subirReporteQuimico(
             ReporteQuimicoUploadDto uploadDto,
             Integer usuarioId
@@ -188,6 +222,8 @@ public class VentaComercializadoraBl {
                     "info");
         }
 
+        liquidacionesWebSocketBl.publicarReporteQuimicoSubido(liq, "comercializadora");
+
         log.info("✅ Reporte químico de comercializadora subido - Liquidación ID: {}", uploadDto.getLiquidacionId());
         return liquidacionVentaBl.convertirADto(liq);
     }
@@ -225,7 +261,6 @@ public class VentaComercializadoraBl {
 
     // ==================== CONFIRMAR PAGO ====================
 
-    @Transactional
     public VentaLiquidacionResponseDto confirmarPago(Integer liquidacionId, VentaPagoDto pagoDto, Integer usuarioId) {
         log.info("Comercializadora confirmando pago - ID: {}", liquidacionId);
         Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
@@ -241,7 +276,19 @@ public class VentaComercializadoraBl {
         liq.setNumeroComprobante(pagoDto.getNumeroComprobante());
         liq.setUrlComprobante(pagoDto.getUrlComprobante());
         if (pagoDto.getObservaciones() != null && !pagoDto.getObservaciones().isBlank()) {
-            appendObs(liq, "PAGO: " + pagoDto.getObservaciones());
+            liquidacionVentaBl.agregarObservacion(
+                    liq,
+                    "pagado",
+                    "Pago confirmado por comercializadora",
+                    pagoDto.getObservaciones(),
+                    "comercializadora",
+                    "cerrado",
+                    Map.of(
+                            "metodo_pago", pagoDto.getMetodoPago(),
+                            "numero_comprobante", pagoDto.getNumeroComprobante(),
+                            "monto_bob", liq.getValorNetoBob()
+                    )
+            );
         }
         liquidacionRepository.save(liq);
         marcarItemsVendidos(liq);
@@ -249,6 +296,7 @@ public class VentaComercializadoraBl {
         notificarSocio(liq, "Pago recibido",
                 String.format("La comercializadora %s ha confirmado el pago de %.2f BOB", com.getRazonSocial(), liq.getValorNetoBob()),
                 "success");
+        liquidacionesWebSocketBl.publicarPagoVenta(liq);
 
         return liquidacionVentaBl.convertirADto(liq);
     }
@@ -263,12 +311,6 @@ public class VentaComercializadoraBl {
         List<Liquidacion> ventas = liquidacionRepository
                 .findByComercializadoraIdAndTipoLiquidacionInOrderByCreatedAtDesc(com, LiquidacionVentaBl.TIPOS_VENTA);
         return liquidacionVentaBl.listarLiquidaciones(ventas, estado, tipoLiquidacion, fechaDesde, fechaHasta, page, size);
-    }
-
-    @Transactional(readOnly = true)
-    public VentaLiquidacionResponseDto obtenerDetalleVenta(Integer liquidacionId, Integer usuarioId) {
-        Comercializadora com = obtenerComercializadoraDelUsuario(usuarioId);
-        return liquidacionVentaBl.convertirADto(obtenerLiquidacionConPermisos(liquidacionId, com));
     }
 
     // ==================== ESTADÍSTICAS ====================
@@ -479,14 +521,14 @@ public class VentaComercializadoraBl {
         if (LiquidacionVentaBl.TIPO_VENTA_CONCENTRADO.equals(liq.getTipoLiquidacion())) {
             liq.getLiquidacionConcentradoList().forEach(lc -> {
                 Concentrado c = lc.getConcentradoId();
-                c.setEstado("vendido");
+                c.setEstado("vendido_a_comercializadora");
                 concentradoRepository.save(c);
                 log.info("✅ Concentrado ID: {} marcado como vendido", c.getId());
             });
         } else {
             liq.getLiquidacionLoteList().forEach(ll -> {
                 Lotes l = ll.getLotesId();
-                l.setEstado("Vendido");
+                l.setEstado("Vendido a comercializadora");
                 lotesRepository.save(l);
                 log.info("✅ Lote ID: {} marcado como vendido", l.getId());
             });
@@ -498,11 +540,6 @@ public class VentaComercializadoraBl {
         meta.put("liquidacionId", liq.getId());
         meta.put("tipoLiquidacion", liq.getTipoLiquidacion());
         notificacionBl.crearNotificacion(liq.getSocioId().getUsuariosId().getId(), tipo, titulo, mensaje, meta);
-    }
-
-    private void appendObs(Liquidacion liq, String texto) {
-        String obs = liq.getObservaciones() != null ? liq.getObservaciones() : "";
-        liq.setObservaciones(obs + " | " + texto);
     }
 
     private long contarPorEstado(List<Liquidacion> list, String estado) {

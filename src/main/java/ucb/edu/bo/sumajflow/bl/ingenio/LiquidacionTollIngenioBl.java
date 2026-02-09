@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
+import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.ConcentradoCreateDto;
 import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
@@ -40,6 +41,7 @@ public class LiquidacionTollIngenioBl {
     private final UsuariosRepository usuariosRepository;
     private final NotificacionBl notificacionBl;
     private final ObjectMapper objectMapper;
+    private final LiquidacionVentaBl liquidacionVentaBl;
 
     // Constantes de costos
     private static final BigDecimal COSTO_RETROEXCAVADORA_GRANDE = new BigDecimal("500.00");
@@ -117,11 +119,22 @@ public class LiquidacionTollIngenioBl {
                 .valorNetoBob(valorNetoBob)
                 .moneda("BOB")
                 .estado("pendiente_procesamiento")
-                .observaciones("Liquidación de servicio de procesamiento (Toll) - " + lotes.size() + " lotes. " +
-                        "Esperando finalización de procesamiento.")
                 .build();
 
         liquidacion = liquidacionRepository.save(liquidacion);
+        liquidacionVentaBl.agregarObservacion(
+                liquidacion,
+                "pendiente_procesamiento",
+                "Liquidación de Toll creada",
+                "Liquidación de servicio de procesamiento - " + lotes.size() + " lotes. Esperando finalización de procesamiento.",
+                "ingenio",
+                null,
+                Map.of(
+                        "cantidad_lotes", lotes.size(),
+                        "peso_total_kg", pesoTotalKg,
+                        "costo_procesamiento_total", costoProcesamientoTotal
+                )
+        );
 
         // 7. Crear relaciones con lotes
         for (Lotes lote : lotes) {
@@ -172,8 +185,17 @@ public class LiquidacionTollIngenioBl {
 
         // Cambiar estado a esperando_pago
         liquidacion.setEstado("esperando_pago");
-        liquidacion.setObservaciones(liquidacion.getObservaciones() +
-                " | ACTIVADA PARA PAGO: " + LocalDateTime.now());
+        liquidacionVentaBl.agregarObservacion(
+                liquidacion,
+                "esperando_pago",
+                "Liquidación activada para pago",
+                "Procesamiento finalizado. Listo para que el socio realice el pago.",
+                "ingenio",
+                "pendiente_procesamiento",
+                Map.of(
+                        "valor_neto_bob", liquidacion.getValorNetoBob()
+                )
+        );
 
         liquidacionRepository.save(liquidacion);
 

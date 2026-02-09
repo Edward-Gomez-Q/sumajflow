@@ -12,4 +12,5 @@ import java.util.Optional;
 
 public interface LiquidacionLoteRepository extends JpaRepository<LiquidacionLote, Integer> {
    List<LiquidacionLote> findByLotesId(Lotes lote);
+   void deleteByLiquidacionId(Liquidacion liquidacion);
 }

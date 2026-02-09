@@ -10,5 +10,5 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public interface LiquidacionDeduccionRepository extends JpaRepository<LiquidacionDeduccion, Integer> {
-
+    List<LiquidacionDeduccion> findByLiquidacionIdOrderByOrdenAsc(Liquidacion liquidacion);
 }

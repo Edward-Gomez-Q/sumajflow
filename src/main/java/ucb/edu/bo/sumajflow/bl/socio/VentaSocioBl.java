@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.CotizacionMineralBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl.*;
+import ucb.edu.bo.sumajflow.bl.LiquidacionesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.CotizacionMineralDto;
 import ucb.edu.bo.sumajflow.dto.venta.*;
@@ -52,6 +53,7 @@ public class VentaSocioBl {
     private final CotizacionMineralBl cotizacionMineralBl;
     private final DeduccionConfiguracionRepository deduccionConfiguracionRepository;
     private final TablaPreciosMineralRepository tablaPreciosMineralRepository;
+    private final LiquidacionesWebSocketBl liquidacionesWebSocketBl;
 
     // ==================== 1. CREAR VENTA DE CONCENTRADO ====================
 
@@ -59,7 +61,6 @@ public class VentaSocioBl {
      * Crear liquidación de venta de concentrado(s).
      * Estado inicial: pendiente_aprobacion
      */
-    @Transactional
     public VentaLiquidacionResponseDto crearVentaConcentrado(
             VentaCreateDto createDto,
             Integer usuarioId
@@ -118,7 +119,6 @@ public class VentaSocioBl {
                 .pesoFinalTms(pesoTotalFinal)
                 .estado("pendiente_aprobacion")
                 .moneda("BOB")
-                .observaciones(createDto.getObservaciones() != null ? createDto.getObservaciones() : "")
                 .build();
 
         Map<String, Object> metadata = new HashMap<>();
@@ -127,6 +127,21 @@ public class VentaSocioBl {
         liquidacion.setServiciosAdicionales(liquidacionVentaBl.convertirAJson(metadata));
 
         liquidacion = liquidacionRepository.save(liquidacion);
+        if (createDto.getObservaciones() != null && !createDto.getObservaciones().isBlank()) {
+            liquidacionVentaBl.agregarObservacion(
+                    liquidacion,
+                    "pendiente_aprobacion",
+                    "Solicitud de venta de concentrado creada",
+                    createDto.getObservaciones(),
+                    "socio",
+                    null,
+                    Map.of(
+                            "cantidad_concentrados", concentrados.size(),
+                            "peso_total_tms", pesoTotalFinal
+                    )
+            );
+            liquidacionRepository.save(liquidacion);
+        }
 
         for (Concentrado concentrado : concentrados) {
             LiquidacionConcentrado lc = LiquidacionConcentrado.builder()
@@ -146,6 +161,7 @@ public class VentaSocioBl {
                 String.format("El socio solicita vender %d concentrado(s) de %s. Peso total: %.2f TMS",
                         concentrados.size(), mineralPrincipal, pesoTotalFinal),
                 "info");
+        liquidacionesWebSocketBl.publicarCreacionVenta(liquidacion);
 
         log.info("✅ Venta de concentrado creada - Liquidación ID: {}", liquidacion.getId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -157,7 +173,6 @@ public class VentaSocioBl {
      * Crear liquidación de venta de lote(s) complejo(s).
      * Para lotes que van directo de mina a comercializadora.
      */
-    @Transactional
     public VentaLiquidacionResponseDto crearVentaLoteComplejo(
             VentaCreateDto createDto,
             Integer usuarioId
@@ -203,7 +218,6 @@ public class VentaSocioBl {
                 .pesoTmh(pesoToneladas)
                 .estado("pendiente_aprobacion")
                 .moneda("BOB")
-                .observaciones(createDto.getObservaciones() != null ? createDto.getObservaciones() : "")
                 .build();
 
         Map<String, Object> metadataMap = new HashMap<>();
@@ -211,6 +225,23 @@ public class VentaSocioBl {
         liquidacion.setServiciosAdicionales(liquidacionVentaBl.convertirAJson(metadataMap));
 
         liquidacion = liquidacionRepository.save(liquidacion);
+
+        if (createDto.getObservaciones() != null && !createDto.getObservaciones().isBlank()) {
+            liquidacionVentaBl.agregarObservacion(
+                    liquidacion,
+                    "pendiente_aprobacion",
+                    "Solicitud de venta de lote complejo creada",
+                    createDto.getObservaciones(),
+                    "socio",
+                    null,
+                    Map.of(
+                            "cantidad_lotes", lotes.size(),
+                            "peso_total_kg", pesoTotal,
+                            "comercializadora", comercializadora.getRazonSocial()
+                    )
+            );
+            liquidacionRepository.save(liquidacion);
+        }
 
         for (Lotes lote : lotes) {
             LiquidacionLote ll = LiquidacionLote.builder()
@@ -229,6 +260,7 @@ public class VentaSocioBl {
                 "Nueva solicitud de venta de lotes",
                 String.format("El socio solicita vender %d lote(s). Peso total: %.2f kg", lotes.size(), pesoTotal),
                 "info");
+        liquidacionesWebSocketBl.publicarCreacionVenta(liquidacion);
 
         log.info("✅ Venta de lote complejo creada - Liquidación ID: {}", liquidacion.getId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -244,7 +276,6 @@ public class VentaSocioBl {
      * Si el otro ya subió, se procede al promedio automático.
      * IMPORTANTE: El reporte es del MISMO concentrado/lote sellado a vista de ambos.
      */
-    @Transactional
     public VentaLiquidacionResponseDto subirReporteQuimico(
             ReporteQuimicoUploadDto uploadDto,
             Integer usuarioId
@@ -339,6 +370,7 @@ public class VentaSocioBl {
                     "El socio ha subido su reporte químico. Por favor sube el tuyo para continuar.",
                     "info");
         }
+        liquidacionesWebSocketBl.publicarReporteQuimicoSubido(liquidacion, "socio");
 
         log.info("✅ Reporte químico del socio subido exitosamente - Liquidación ID: {}", uploadDto.getLiquidacionId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -499,7 +531,6 @@ public class VentaSocioBl {
 
     // ==================== 3. CERRAR VENTA ====================
 
-    @Transactional
     public VentaLiquidacionResponseDto cerrarVenta(
             Integer liquidacionId,
             VentaCierreDto cierreDto,
@@ -699,6 +730,8 @@ public class VentaSocioBl {
                 String.format("El socio ha cerrado la venta de lote. Monto a pagar: %.2f BOB (%.2f USD)",
                         calculo.valorNetoBob(), calculo.valorNetoUsd()),
                 "warning");
+
+        liquidacionesWebSocketBl.publicarCierreVenta(liquidacion);
 
         // ========== RESUMEN ==========
         log.info("========== RESUMEN CIERRE VENTA LOTE COMPLEJO ==========");
@@ -1041,8 +1074,19 @@ public class VentaSocioBl {
         liquidacion.setEstado("cerrado");
 
         if (cierreDto.getObservaciones() != null && !cierreDto.getObservaciones().isBlank()) {
-            String obs = liquidacion.getObservaciones() != null ? liquidacion.getObservaciones() : "";
-            liquidacion.setObservaciones(obs + " | CIERRE: " + cierreDto.getObservaciones());
+            liquidacionVentaBl.agregarObservacion(
+                    liquidacion,
+                    "cerrado",
+                    "Venta cerrada por el socio",
+                    cierreDto.getObservaciones(),
+                    "socio",
+                    "esperando_cierre_venta",
+                    Map.of(
+                            "valor_neto_usd", calculo.valorNetoUsd(),
+                            "valor_neto_bob", calculo.valorNetoBob(),
+                            "tipo_cambio", tipoCambio
+                    )
+            );
         }
 
         liquidacionRepository.save(liquidacion);
@@ -1111,6 +1155,10 @@ public class VentaSocioBl {
                         calculo.valorNetoBob(), calculo.valorNetoUsd()),
                 "warning");
         log.info("✅ Notificación enviada a comercializadora ID: {}", comercializadora.getId());
+
+        //Publicar websocket para actualizar en tiempo real
+        liquidacionesWebSocketBl.publicarCierreVenta(liquidacion);
+        log.info("✅ Evento WebSocket publicado para cierre de venta");
 
         // ========== RESUMEN FINAL ==========
         log.info("========== RESUMEN CIERRE DE VENTA ==========");
@@ -1203,106 +1251,6 @@ public class VentaSocioBl {
         log.info("   Total deducciones después del filtrado: {}", deducciones.size());
         return deducciones;
     }
-    /**
-     * Construir deducciones fijas por ley boliviana
-     */
-    private List<DeduccionInput> construirDeduccionesFijas(
-            String mineralPrincipal,
-            BigDecimal valorBrutoPrincipal,
-            BigDecimal valorBrutoAg
-    ) {
-        List<DeduccionInput> deducciones = new ArrayList<>();
-        int orden = 1;
-
-        // ========== REGALÍAS MINERAS (sobre cada mineral específico) ==========
-
-        // Regalía Minera - Mineral Principal (Zn o Pb): 3%
-        if ("Zn".equalsIgnoreCase(mineralPrincipal)) {
-            deducciones.add(new DeduccionInput(
-                    "Regalía Minera - Zinc",
-                    new BigDecimal("3.0"),
-                    "regalia",
-                    "Regalía minera por Zinc según ley aplicable",
-                    "valor_bruto_principal",
-                    orden++
-            ));
-        } else if ("Pb".equalsIgnoreCase(mineralPrincipal)) {
-            deducciones.add(new DeduccionInput(
-                    "Regalía Minera - Plomo",
-                    new BigDecimal("3.0"),
-                    "regalia",
-                    "Regalía minera por Plomo según ley aplicable",
-                    "valor_bruto_principal",
-                    orden++
-            ));
-        }
-
-        // Regalía Minera - Plata: 3.6% (solo si hay contenido de Ag)
-        if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
-            deducciones.add(new DeduccionInput(
-                    "Regalía Minera - Plata",
-                    new BigDecimal("3.6"),
-                    "regalia",
-                    "Regalía minera por Plata según ley aplicable",
-                    "valor_bruto_ag",
-                    orden++
-            ));
-        }
-
-        // ========== APORTES Y CONTRIBUCIONES (sobre valor bruto total) ==========
-
-        // Aporte a la Cooperativa: 3%
-        deducciones.add(new DeduccionInput(
-                "Aporte a la Cooperativa",
-                new BigDecimal("3.0"),
-                "aporte",
-                "Aporte obligatorio a la cooperativa minera",
-                "valor_bruto_total",
-                orden++
-        ));
-
-        // C.N.S (Caja Nacional de Salud): 1.8%
-        deducciones.add(new DeduccionInput(
-                "C.N.S",
-                new BigDecimal("1.8"),
-                "aporte",
-                "Caja Nacional de Salud",
-                "valor_bruto_total",
-                orden++
-        ));
-
-        // COMIBOL (Corporación Minera de Bolivia): 1%
-        deducciones.add(new DeduccionInput(
-                "COMIBOL",
-                new BigDecimal("1.0"),
-                "aporte",
-                "Corporación Minera de Bolivia",
-                "valor_bruto_total",
-                orden++
-        ));
-
-        // FEDECOMIN (Federación de Cooperativas Mineras): 1%
-        deducciones.add(new DeduccionInput(
-                "FEDECOMIN",
-                new BigDecimal("1.0"),
-                "aporte",
-                "Federación de Cooperativas Mineras",
-                "valor_bruto_total",
-                orden++
-        ));
-
-        // FENCOMIN (Federación Nacional de Cooperativas Mineras): 0.4%
-        deducciones.add(new DeduccionInput(
-                "FENCOMIN",
-                new BigDecimal("0.4"),
-                "aporte",
-                "Federación Nacional de Cooperativas Mineras",
-                "valor_bruto_total",
-                orden++
-        ));
-
-        return deducciones;
-    }
 
     // ==================== 4. LISTAR Y CONSULTAR ====================
 
@@ -1323,12 +1271,6 @@ public class VentaSocioBl {
                 ventas, estado, tipoLiquidacion, fechaDesde, fechaHasta, page, size);
     }
 
-    @Transactional(readOnly = true)
-    public VentaLiquidacionResponseDto obtenerDetalleVenta(Integer liquidacionId, Integer usuarioId) {
-        Socio socio = obtenerSocioDelUsuario(usuarioId);
-        Liquidacion liquidacion = obtenerLiquidacionConPermisos(liquidacionId, socio);
-        return liquidacionVentaBl.convertirADto(liquidacion);
-    }
 
     // ==================== 5. ESTADÍSTICAS ====================
 
@@ -1364,8 +1306,6 @@ public class VentaSocioBl {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> obtenerConcentradosDisponibles(Integer usuarioId) {
         Socio socio = obtenerSocioDelUsuario(usuarioId);
-        // Usa findBySocioPropietarioIdOrderByCreatedAtDesc y filtra por estado en Java
-        // ya que findBySocioPropietarioIdAndEstado puede no existir aún en tu repo
         return concentradoRepository.findBySocioPropietarioIdOrderByCreatedAtDesc(socio).stream()
                 .filter(c -> "listo_para_venta".equals(c.getEstado()))
                 .map(c -> {
@@ -1387,11 +1327,16 @@ public class VentaSocioBl {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> obtenerLotesDisponiblesParaVenta(Integer usuarioId) {
+        try{
         Socio socio = obtenerSocioDelUsuario(usuarioId);
+        log.info("Obteniendo lotes para venta del socio ID: {}", socio.getId());
         return lotesRepository.findAll().stream()
                 .filter(l -> l.getMinasId().getSocioId().getId().equals(socio.getId()))
                 .filter(l -> "Transporte completo".equals(l.getEstado()))
+                .filter(l -> "venta_directa".equals(l.getTipoOperacion()))
                 .map(l -> {
+                    log.info("Lote ID: {}, Mina: {}, Estado: {}, Tipo mineral: {}, Peso real: {}",
+                            l.getId(), l.getMinasId().getNombre(), l.getEstado(), l.getTipoMineral(), l.getPesoTotalReal());
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", l.getId());
                     map.put("minaNombre", l.getMinasId().getNombre());
@@ -1401,10 +1346,16 @@ public class VentaSocioBl {
                     map.put("comercializadoraId", l.getLoteComercializadoraList().getFirst().getComercializadoraId().getId().toString());
                     return map;
                 }).collect(Collectors.toList());
+        }catch (Exception e) {
+            log.error("Error al obtener lotes disponibles para venta", e);
+            throw e;
+        }
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> obtenerComercializadorasDisponibles() {
+        LocalDate hoy = LocalDate.now();
+
         return comercializadoraRepository.findAll().stream()
                 .map(c -> {
                     Map<String, Object> map = new HashMap<>();
@@ -1413,8 +1364,57 @@ public class VentaSocioBl {
                     map.put("nit", c.getNit());
                     map.put("departamento", c.getDepartamento());
                     map.put("municipio", c.getMunicipio());
+                    map.put("tablaPrecios", obtenerResumenPrecios(c, hoy));
+
                     return map;
                 }).collect(Collectors.toList());
+    }
+    private Map<String, Object> obtenerResumenPrecios(Comercializadora comercializadora, LocalDate fecha) {
+        List<TablaPreciosMineral> preciosVigentes = tablaPreciosMineralRepository
+                .findPreciosVigentes(comercializadora.getId(), fecha);
+
+        Map<String, Object> resumen = new HashMap<>();
+
+        // Agrupar por mineral
+        Map<String, List<TablaPreciosMineral>> porMineral = preciosVigentes.stream()
+                .collect(Collectors.groupingBy(TablaPreciosMineral::getMineral));
+
+        // Contar rangos por mineral
+        resumen.put("totalRangosPb", porMineral.getOrDefault("Pb", Collections.emptyList()).size());
+        resumen.put("totalRangosZn", porMineral.getOrDefault("Zn", Collections.emptyList()).size());
+        resumen.put("totalRangosAg", porMineral.getOrDefault("Ag", Collections.emptyList()).size());
+
+        // Verificar si tiene configuración completa
+        boolean tieneConfiguracion =
+                porMineral.containsKey("Pb") && !porMineral.get("Pb").isEmpty() &&
+                        porMineral.containsKey("Zn") && !porMineral.get("Zn").isEmpty() &&
+                        porMineral.containsKey("Ag") && !porMineral.get("Ag").isEmpty();
+
+        resumen.put("tieneConfiguracion", tieneConfiguracion);
+
+        // Rangos detallados por mineral (solo activos)
+        Map<String, List<Map<String, Object>>> rangosDetallados = new HashMap<>();
+
+        for (Map.Entry<String, List<TablaPreciosMineral>> entry : porMineral.entrySet()) {
+            List<Map<String, Object>> rangos = entry.getValue().stream()
+                    .filter(TablaPreciosMineral::getActivo)
+                    .sorted(Comparator.comparing(TablaPreciosMineral::getRangoMinimo))
+                    .map(p -> {
+                        Map<String, Object> rango = new HashMap<>();
+                        rango.put("rangoMinimo", p.getRangoMinimo());
+                        rango.put("rangoMaximo", p.getRangoMaximo());
+                        rango.put("precioUsd", p.getPrecioUsd());
+                        rango.put("unidadMedida", p.getUnidadMedida());
+                        return rango;
+                    })
+                    .collect(Collectors.toList());
+
+            rangosDetallados.put(entry.getKey(), rangos);
+        }
+
+        resumen.put("rangos", rangosDetallados);
+
+        return resumen;
     }
 
     // ==================== MÉTODOS PRIVADOS ====================

@@ -325,7 +325,7 @@ public class VentaSocioController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            extractUsuarioId(token); // Solo validar auth
+            extractUsuarioId(token);
             List<Map<String, Object>> comercializadoras = ventaSocioBl.obtenerComercializadorasDisponibles();
 
             response.put("success", true);

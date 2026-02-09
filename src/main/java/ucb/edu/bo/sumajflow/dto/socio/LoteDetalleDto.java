@@ -4,7 +4,10 @@ package ucb.edu.bo.sumajflow.dto.socio;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import ucb.edu.bo.sumajflow.dto.cooperativa.ConcentradoVendidoDto;
+import ucb.edu.bo.sumajflow.dto.cooperativa.DeduccionVentaDto;
 import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionDetalleDto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -69,4 +72,6 @@ public class LoteDetalleDto {
     private LocalDateTime updatedAt;
 
     private LiquidacionTollResponseDto liquidacionToll;
+    private List<DeduccionVentaDto> deduccionesVenta;
+    private List<ConcentradoVendidoDto> concentradosVendidos;
 }
