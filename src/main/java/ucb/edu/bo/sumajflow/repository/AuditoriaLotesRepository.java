@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.AuditoriaLotes;
 import ucb.edu.bo.sumajflow.entity.Lotes;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AuditoriaLotesRepository extends JpaRepository<AuditoriaLotes, Integer> {
@@ -23,4 +24,10 @@ public interface AuditoriaLotesRepository extends JpaRepository<AuditoriaLotes, 
             @Param("limit") int limit
     );
     List<AuditoriaLotes> findByLoteIdOrderByFechaRegistroDesc(Lotes loteId);
+
+    List<AuditoriaLotes> findByFechaRegistroBetween(LocalDateTime fechaRegistroAfter, LocalDateTime fechaRegistroBefore);
+
+    List<AuditoriaLotes> findByFechaRegistroAfter(LocalDateTime fechaRegistroAfter);
+
+
 }

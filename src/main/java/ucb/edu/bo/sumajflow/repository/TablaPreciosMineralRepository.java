@@ -43,4 +43,6 @@ public interface TablaPreciosMineralRepository extends JpaRepository<TablaPrecio
             @Param("fecha") LocalDate fecha
     );
 
+    List<TablaPreciosMineral> findByMineral(String mineral);
+
 }

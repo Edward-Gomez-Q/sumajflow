@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.Lotes;
 import ucb.edu.bo.sumajflow.entity.Minas;
+import ucb.edu.bo.sumajflow.entity.Socio;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -205,4 +206,9 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
           Pageable pageable
   );
 
+  @Query("SELECT l FROM Lotes l WHERE l.minasId.socioId = :socio")
+  List<Lotes> findByMinasSocioId(@Param("socio") Socio socio);
+
+  @Query("SELECT l FROM Lotes l WHERE l.minasId.socioId = :socio AND l.estado = :estado")
+  List<Lotes> findByMinasSocioIdAndEstado(Socio socio, String estado);
 }

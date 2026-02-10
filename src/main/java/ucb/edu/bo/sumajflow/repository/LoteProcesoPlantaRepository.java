@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.Concentrado;
 import ucb.edu.bo.sumajflow.entity.LoteProcesoPlanta;
+import ucb.edu.bo.sumajflow.entity.Procesos;
 
 import java.util.List;
 import java.util.Optional;
@@ -39,5 +40,9 @@ public interface LoteProcesoPlantaRepository extends JpaRepository<LoteProcesoPl
     // Verificar si todos los procesos están completados
     @Query("SELECT CASE WHEN COUNT(lpp) = 0 THEN true ELSE false END FROM LoteProcesoPlanta lpp WHERE lpp.concentradoId = :concentrado AND lpp.estado != 'completado'")
     boolean todosCompletados(@Param("concentrado") Concentrado concentrado);
+
+    List<LoteProcesoPlanta> findByConcentradoId(Concentrado concentradoId);
+
+    List<LoteProcesoPlanta> findByProcesoIdAndEstado(Procesos procesoId, String estado);
 
 }

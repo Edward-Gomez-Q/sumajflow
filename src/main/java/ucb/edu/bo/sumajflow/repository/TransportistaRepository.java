@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import ucb.edu.bo.sumajflow.entity.InvitacionTransportista;
 import ucb.edu.bo.sumajflow.entity.Transportista;
 import ucb.edu.bo.sumajflow.entity.Usuarios;
 
@@ -103,7 +104,7 @@ public interface TransportistaRepository extends JpaRepository<Transportista, In
      */
     Optional<Transportista> findByUsuariosId_Id(Integer usuarioId);
 
-
+    Optional<Transportista> findByInvitacionTransportista(InvitacionTransportista invitacionTransportista);
 
 
 }

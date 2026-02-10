@@ -20,5 +20,5 @@ public interface LiquidacionConcentradoRepository extends JpaRepository<Liquidac
     List<Concentrado> findDistinctConcentradosByComercializadoraAprobados(
             @Param("comercializadora") Comercializadora comercializadora);
 
-    void deleteByLiquidacionId(Liquidacion liquidacion);
+    List<LiquidacionConcentrado> findByLiquidacionId(Liquidacion liquidacion);
 }

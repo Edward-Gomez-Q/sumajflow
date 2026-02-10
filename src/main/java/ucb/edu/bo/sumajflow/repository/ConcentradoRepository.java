@@ -29,4 +29,8 @@ public interface ConcentradoRepository extends JpaRepository<Concentrado, Intege
   List<Concentrado> findBySocioPropietarioIdAndEstado(Socio socio, String estado);
   List<Concentrado> findByLoteConcentradoRelacionList_LoteComplejoId(Lotes lote);
 
+  List<Concentrado> findByIngenioMineroIdAndEstado(IngenioMinero ingenioMineroId, String estado);
+  List<Concentrado> findBySocioPropietarioId(Socio socioPropietarioId);
+
+  List<Concentrado> findByIngenioMineroId(IngenioMinero ingenioMineroId);
 }

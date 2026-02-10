@@ -30,6 +30,10 @@ public interface CooperativaSocioRepository extends JpaRepository<CooperativaSoc
             Pageable pageable
     );
 
+    List<CooperativaSocio> findByCooperativaId(Cooperativa cooperativa);
+    List<CooperativaSocio> findByCooperativaIdAndEstado(Cooperativa cooperativa, String estado);
+
+    Optional<CooperativaSocio> findByCooperativaIdAndSocioId(Cooperativa cooperativaId, Socio socioId);
     /**
      * Busca socios por cooperativa y estado
      */

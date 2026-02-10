@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ActualizarProcesoDto {
-    private String nuevoEstado; // "pendiente", "en_proceso", "completado"
-    private String observaciones;
+public class AlertaConcentradoDto {
+    private String tipo; // "normal", "retraso", "critico"
+    private String mensaje;
 }

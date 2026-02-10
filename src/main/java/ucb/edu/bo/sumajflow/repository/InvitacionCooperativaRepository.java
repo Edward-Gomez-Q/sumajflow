@@ -50,4 +50,5 @@ public interface InvitacionCooperativaRepository extends JpaRepository<Invitacio
             Cooperativa cooperativa,
             InvitacionTransportista invitacion
     );
+
 }

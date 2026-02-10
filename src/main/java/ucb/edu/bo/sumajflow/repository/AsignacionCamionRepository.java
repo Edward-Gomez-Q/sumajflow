@@ -5,15 +5,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ucb.edu.bo.sumajflow.entity.AsignacionCamion;
 import ucb.edu.bo.sumajflow.entity.Lotes;
+import ucb.edu.bo.sumajflow.entity.Socio;
 import ucb.edu.bo.sumajflow.entity.Transportista;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 public interface AsignacionCamionRepository extends JpaRepository<AsignacionCamion, Integer> {
 
   // Obtener todas las asignaciones de un lote
   List<AsignacionCamion> findByLotesId(Lotes lote);
+
+  List<AsignacionCamion> findByFechaInicioAfter(LocalDateTime fechaInicioAfter);
 
   // Contar asignaciones de un lote
   @Query("SELECT COUNT(a) FROM AsignacionCamion a WHERE a.lotesId = :lote")
@@ -78,7 +83,19 @@ public interface AsignacionCamionRepository extends JpaRepository<AsignacionCami
    * Buscar todas las asignaciones de un transportista
    */
   List<AsignacionCamion> findByTransportistaId(Transportista transportista);
+  @Query("SELECT ac FROM AsignacionCamion ac " +
+          "WHERE ac.lotesId.minasId.socioId = :socio " +
+          "AND ac.estado IN :estados")
+  List<AsignacionCamion> findByLotesIdMinasSocioIdAndEstadoIn(
+          @Param("socio") Socio socio,
+          @Param("estados") List<String> estados
+  );
+  
+  int countByLotesId(Lotes lote);
 
+  List<AsignacionCamion> findByEstadoIn(Collection<String> estados);
 
-    int countByLotesId(Lotes lote);
+  List<AsignacionCamion> findByEstadoAndFechaFinBetween(String estado, LocalDateTime fechaFinAfter, LocalDateTime fechaFinBefore);
+
+  List<AsignacionCamion> findByEstadoAndFechaFinAfter(String estado, LocalDateTime fechaFinAfter);
 }

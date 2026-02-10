@@ -91,4 +91,6 @@ public interface MinasRepository extends JpaRepository<Minas, Integer> {
    */
   @Query("SELECT COUNT(l) FROM Lotes l WHERE l.minasId = :mina AND l.estado NOT IN ('completado', 'rechazado', 'cancelado')")
   long countLotesActivosByMina(@Param("mina") Minas mina);
+
+  List<Minas> findBySectoresId(Sectores sectoresId);
 }
