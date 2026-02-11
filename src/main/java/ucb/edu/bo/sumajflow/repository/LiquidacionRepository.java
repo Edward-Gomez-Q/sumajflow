@@ -44,8 +44,8 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Intege
     Optional<Liquidacion> findByLote(@Param("lote") Lotes lote);
 
     @Query("SELECT DISTINCT l FROM Liquidacion l " +
-            "JOIN l.liquidacionLoteList ll " +
-            "WHERE ll.lotesId.id = :loteId " +
+            "JOIN l.liquidacionConcentradoList lc " +
+            "WHERE lc.concentradoId = :concentrado " +
             "ORDER BY l.createdAt DESC")
-    Optional<Liquidacion> findByLoteId(@Param("loteId") Integer loteId);
+    Optional<Liquidacion> findByConcentradoId(@Param("concentrado") Concentrado concentrado);
 }

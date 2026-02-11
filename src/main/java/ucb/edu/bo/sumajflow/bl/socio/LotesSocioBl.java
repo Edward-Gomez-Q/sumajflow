@@ -258,7 +258,7 @@ public class LotesSocioBl {
         List<AsignacionCamionSimpleDto> asignacionesDto = asignaciones.stream()
                 .map(a -> {
                     Persona personaTransportista = a.getTransportistaId().getUsuariosId().getPersona();
-                    return new AsignacionCamionSimpleDto(
+                    AsignacionCamionSimpleDto as = new AsignacionCamionSimpleDto(
                             a.getId(),
                             a.getNumeroCamion(),
                             a.getEstado(),
@@ -268,6 +268,13 @@ public class LotesSocioBl {
                             a.getTransportistaId().getPlacaVehiculo(),
                             personaTransportista.getNumeroCelular()
                     );
+
+                    // Solo llenar cuando el estado del lote sea "Vendido a comercializadora" o "Procesado"
+                    if (List.of("Vendido a comercializadora", "Procesado").contains(a.getLotesId().getEstado())) {
+                        extraerYAsignarPesajes(a, as);
+                    }
+
+                    return as;
                 })
                 .collect(Collectors.toList());
         dto.setAsignaciones(asignacionesDto);
@@ -320,6 +327,53 @@ public class LotesSocioBl {
         }
 
         return dto;
+    }
+    /**
+     * Extrae los datos de pesaje desde el JSON de observaciones y los asigna al DTO
+     */
+    private void extraerYAsignarPesajes(AsignacionCamion asignacion, AsignacionCamionSimpleDto dto) {
+        String observacionesJson = asignacion.getObservaciones();
+
+        if (observacionesJson == null || observacionesJson.isBlank()) {
+            log.debug("No hay observaciones para la asignación ID: {}", asignacion.getId());
+            return;
+        }
+
+        try {
+            // Parsear el JSON de observaciones
+            ObservacionesViajeDto observaciones = objectMapper.readValue(
+                    observacionesJson,
+                    ObservacionesViajeDto.class
+            );
+
+            // Extraer pesaje origen
+            if (observaciones.getPesajeOrigen() != null) {
+                PesajeDto pesajeOrigen = observaciones.getPesajeOrigen();
+                dto.setPesajeOrigenTaraKg(pesajeOrigen.getPesoTaraKg());
+                dto.setPesajeOrigenBrutoKg(pesajeOrigen.getPesoBrutoKg());
+                dto.setPesajeOrigenNetoKg(pesajeOrigen.getPesoNetoKg());
+                dto.setPesajeOrigenFecha(pesajeOrigen.getTimestamp());
+
+                log.debug("Pesaje origen extraído - Asignación ID: {}, Neto: {} kg",
+                        asignacion.getId(), pesajeOrigen.getPesoNetoKg());
+            }
+
+            // Extraer pesaje destino
+            if (observaciones.getPesajeDestino() != null) {
+                PesajeDto pesajeDestino = observaciones.getPesajeDestino();
+                dto.setPesajeDestinoTaraKg(pesajeDestino.getPesoTaraKg());
+                dto.setPesajeDestinoBrutoKg(pesajeDestino.getPesoBrutoKg());
+                dto.setPesajeDestinoNetoKg(pesajeDestino.getPesoNetoKg());
+                dto.setPesajeDestinoFecha(pesajeDestino.getTimestamp());
+
+                log.debug("Pesaje destino extraído - Asignación ID: {}, Neto: {} kg",
+                        asignacion.getId(), pesajeDestino.getPesoNetoKg());
+            }
+
+        } catch (Exception e) {
+            log.error("Error al parsear observaciones JSON para asignación ID: {} - JSON: {}",
+                    asignacion.getId(), observacionesJson, e);
+        }
     }
 
     private Map<String, String> parseMetadataToStringMap(String json) {

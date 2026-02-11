@@ -6,8 +6,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ucb.edu.bo.sumajflow.bl.ConcentradoBl;
+import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionResponseDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -42,6 +44,7 @@ public class ConcentradoSocioBl {
     // Servicios
     private final ConcentradoBl concentradoBl;
     private final NotificacionBl notificacionBl;
+    private final LiquidacionVentaBl liquidacionVentaBl;
 
     // ==================== LISTAR CONCENTRADOS DEL SOCIO ====================
 
@@ -88,8 +91,17 @@ public class ConcentradoSocioBl {
 
         Socio socio = obtenerSocioDelUsuario(usuarioId);
         Concentrado concentrado = obtenerConcentradoConPermisos(concentradoId, socio);
-
-        return concentradoBl.convertirAResponseDto(concentrado);
+        ConcentradoResponseDto responseDto = concentradoBl.convertirAResponseDto(concentrado);
+        if ("vendido_a_comercializadora".equals(concentrado.getEstado())) {
+            Liquidacion liquidacion = liquidacionRepository.findByConcentradoId(concentrado).orElse(null);
+            if (liquidacion != null) {
+                VentaLiquidacionResponseDto dtoVenta = liquidacionVentaBl.convertirADto(liquidacion);
+                responseDto.setLiquidacionesVenta(Collections.singletonList(dtoVenta));
+            }
+        } else {
+            responseDto.setLiquidacionesVenta(null);
+        }
+        return responseDto;
     }
 
     /**

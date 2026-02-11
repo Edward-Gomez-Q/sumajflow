@@ -62,5 +62,5 @@ public class ConcentradoResponseDto {
 
     // Liquidaciones
     private LiquidacionTollResponseDto liquidacionToll; // Para ingenio y socio
-    private List<VentaLiquidacionResponseDto> liquidacionesVenta; // Para comercializadora (✅ NUEVO)
+    private List<VentaLiquidacionResponseDto> liquidacionesVenta; // Para comercializadora y socio
 }

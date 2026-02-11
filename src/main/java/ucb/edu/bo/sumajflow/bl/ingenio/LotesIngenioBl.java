@@ -15,10 +15,7 @@ import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
 import ucb.edu.bo.sumajflow.dto.ingenio.*;
-import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
-import ucb.edu.bo.sumajflow.dto.socio.AuditoriaLoteDto;
-import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
-import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
+import ucb.edu.bo.sumajflow.dto.socio.*;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -518,7 +515,7 @@ public class LotesIngenioBl {
         List<AsignacionCamionSimpleDto> asignacionesDto = asignaciones.stream()
                 .map(a -> {
                     Persona personaTransportista = a.getTransportistaId().getUsuariosId().getPersona();
-                    return new AsignacionCamionSimpleDto(
+                    AsignacionCamionSimpleDto as = new AsignacionCamionSimpleDto(
                             a.getId(),
                             a.getNumeroCamion(),
                             a.getEstado(),
@@ -528,6 +525,13 @@ public class LotesIngenioBl {
                             a.getTransportistaId().getPlacaVehiculo(),
                             personaTransportista.getNumeroCelular()
                     );
+
+                    // Solo llenar cuando el estado del lote sea "Vendido a comercializadora" o "Procesado"
+                    if (List.of("Vendido a comercializadora", "Procesado").contains(a.getLotesId().getEstado())) {
+                        extraerYAsignarPesajes(a, as);
+                    }
+
+                    return as;
                 })
                 .collect(Collectors.toList());
         dto.setAsignaciones(asignacionesDto);
@@ -557,6 +561,51 @@ public class LotesIngenioBl {
 
         return dto;
     }
+    private void extraerYAsignarPesajes(AsignacionCamion asignacion, AsignacionCamionSimpleDto dto) {
+        String observacionesJson = asignacion.getObservaciones();
+
+        if (observacionesJson == null || observacionesJson.isBlank()) {
+            log.debug("No hay observaciones para la asignación ID: {}", asignacion.getId());
+            return;
+        }
+
+        try {
+            // Parsear el JSON de observaciones
+            ObservacionesViajeDto observaciones = objectMapper.readValue(
+                    observacionesJson,
+                    ObservacionesViajeDto.class
+            );
+
+            // Extraer pesaje origen
+            if (observaciones.getPesajeOrigen() != null) {
+                PesajeDto pesajeOrigen = observaciones.getPesajeOrigen();
+                dto.setPesajeOrigenTaraKg(pesajeOrigen.getPesoTaraKg());
+                dto.setPesajeOrigenBrutoKg(pesajeOrigen.getPesoBrutoKg());
+                dto.setPesajeOrigenNetoKg(pesajeOrigen.getPesoNetoKg());
+                dto.setPesajeOrigenFecha(pesajeOrigen.getTimestamp());
+
+                log.debug("Pesaje origen extraído - Asignación ID: {}, Neto: {} kg",
+                        asignacion.getId(), pesajeOrigen.getPesoNetoKg());
+            }
+
+            // Extraer pesaje destino
+            if (observaciones.getPesajeDestino() != null) {
+                PesajeDto pesajeDestino = observaciones.getPesajeDestino();
+                dto.setPesajeDestinoTaraKg(pesajeDestino.getPesoTaraKg());
+                dto.setPesajeDestinoBrutoKg(pesajeDestino.getPesoBrutoKg());
+                dto.setPesajeDestinoNetoKg(pesajeDestino.getPesoNetoKg());
+                dto.setPesajeDestinoFecha(pesajeDestino.getTimestamp());
+
+                log.debug("Pesaje destino extraído - Asignación ID: {}, Neto: {} kg",
+                        asignacion.getId(), pesajeDestino.getPesoNetoKg());
+            }
+
+        } catch (Exception e) {
+            log.error("Error al parsear observaciones JSON para asignación ID: {} - JSON: {}",
+                    asignacion.getId(), observacionesJson, e);
+        }
+    }
+
 
     private LoteIngenioResponseDto convertToIngenioResponseDto(LoteIngenio loteIngenio) {
         LoteIngenioResponseDto dto = new LoteIngenioResponseDto();
