@@ -10,6 +10,6 @@ import lombok.NoArgsConstructor;
 public class KanbanDataDto {
     private Integer porIniciar;
     private Integer enProceso;
-    private Integer esperandoReporte;
-    private Integer listoLiquidacion;
+    private Integer esperandoPago;
+    private Integer procesado;
 }

@@ -506,9 +506,14 @@ public class DashboardSocioBl {
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            BigDecimal ingresoVenta = liquidacionesMes.stream()
-                    .filter(liq -> Arrays.asList("venta_concentrado", "venta_lote_complejo")
-                            .contains(liq.getTipoLiquidacion()))
+            BigDecimal ingresoVentaConcentrado = liquidacionesMes.stream()
+                    .filter(liq -> Objects.equals("venta_concentrado", liq.getTipoLiquidacion()))
+                    .map(Liquidacion::getValorNetoBob)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal ingresoVentaComplejo = liquidacionesMes.stream()
+                    .filter(liq -> Objects.equals("venta_lote_complejo", liq.getTipoLiquidacion()))
                     .map(Liquidacion::getValorNetoBob)
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -519,8 +524,8 @@ public class DashboardSocioBl {
             resultado.add(new IngresoMensualDto(
                     nombreMes,
                     ingresoToll,
-                    ingresoVenta,
-                    ingresoToll.add(ingresoVenta)
+                    ingresoVentaConcentrado,
+                    ingresoVentaComplejo
             ));
         }
 
@@ -560,6 +565,8 @@ public class DashboardSocioBl {
                 }
             }
         }
+        //Elimar ag porque no hay concentrados de ag
+        ingresosPorMineral.remove("Ag");
 
         BigDecimal total = ingresosPorMineral.values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class IngresoMensualDto {
     private String mes;
-    private BigDecimal ingresoToll;
+    private BigDecimal pagoToll;
     private BigDecimal ingresoVentaConcentrado;
-    private BigDecimal total;
+    private BigDecimal ingresoVentaComplejo;
 }

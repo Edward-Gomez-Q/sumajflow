@@ -157,11 +157,11 @@ public class DashboardIngenioBl {
                 .count();
 
         long esperandoReporte = concentrados.stream()
-                .filter(c -> "esperando_reporte_quimico".equals(c.getEstado()))
+                .filter(c -> "esperando_pago".equals(c.getEstado()))
                 .count();
 
         long listoLiquidacion = concentrados.stream()
-                .filter(c -> "listo_para_liquidacion".equals(c.getEstado()))
+                .filter(c -> "procesado".equals(c.getEstado()))
                 .count();
 
         return new KanbanDataDto(
@@ -256,18 +256,18 @@ public class DashboardIngenioBl {
 
         // Columna: Esperando Reporte
         columnas.add(crearColumnaKanban(
-                "esperando_reporte",
-                "Esperando Reporte",
-                "esperando_reporte_quimico",
+                "esperando_pago",
+                "Esperando Pago",
+                "esperando_pago",
                 "bg-yellow-500",
                 concentrados
         ));
 
         // Columna: Listo Liquidación
         columnas.add(crearColumnaKanban(
-                "listo_liquidacion",
-                "Listo Liquidación",
-                "listo_para_liquidacion",
+                "procesado",
+                "Procesado",
+                "listo_para_venta",
                 "bg-green-500",
                 concentrados
         ));
