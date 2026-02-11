@@ -109,7 +109,7 @@ public class ConcentradoSocioBl {
         dashboard.put("esperandoReporte", misConcentrados.stream().filter(c -> "esperando_reporte_quimico".equals(c.getEstado())).count());
         dashboard.put("pendientePago", misConcentrados.stream().filter(c -> c.getEstado().contains("liquidado") && !c.getEstado().contains("pagado")).count());
         dashboard.put("listoVenta", misConcentrados.stream().filter(c -> "listo_para_venta".equals(c.getEstado())).count());
-        dashboard.put("vendidos", misConcentrados.stream().filter(c -> "vendido".equals(c.getEstado())).count());
+        dashboard.put("vendidos", misConcentrados.stream().filter(c -> "vendido_a_comercializadora".equals(c.getEstado())).count());
 
         return dashboard;
     }

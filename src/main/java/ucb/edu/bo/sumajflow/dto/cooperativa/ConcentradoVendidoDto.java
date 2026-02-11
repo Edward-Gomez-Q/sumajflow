@@ -14,6 +14,6 @@ public class ConcentradoVendidoDto {
     private String codigoConcentrado;
     private String mineralPrincipal;
     private String estado;
-    private String mensajeEstado; // Para mostrar "Aún no vendido" o "Vendido"
+    private String mensajeEstado;
     private List<DeduccionVentaDto> deducciones;
 }

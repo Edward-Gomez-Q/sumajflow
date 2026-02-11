@@ -3,11 +3,10 @@ package ucb.edu.bo.sumajflow.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import ucb.edu.bo.sumajflow.entity.Comercializadora;
-import ucb.edu.bo.sumajflow.entity.IngenioMinero;
-import ucb.edu.bo.sumajflow.entity.Liquidacion;
-import ucb.edu.bo.sumajflow.entity.Socio;
+import ucb.edu.bo.sumajflow.entity.*;
+
 import java.util.List;
+import java.util.Optional;
 
 public interface LiquidacionRepository extends JpaRepository<Liquidacion, Integer> {
     List<Liquidacion> findBySocioIdOrderByCreatedAtDesc(Socio socio);
@@ -36,4 +35,17 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Intege
             "WHERE li.ingenioMineroId = :ingenio " +
             "ORDER BY l.createdAt DESC")
     List<Liquidacion> findByIngenioMineroId(@Param("ingenio") IngenioMinero ingenio);
+
+
+    @Query("SELECT DISTINCT l FROM Liquidacion l " +
+            "JOIN l.liquidacionLoteList ll " +
+            "WHERE ll.lotesId = :lote " +
+            "ORDER BY l.createdAt DESC")
+    Optional<Liquidacion> findByLote(@Param("lote") Lotes lote);
+
+    @Query("SELECT DISTINCT l FROM Liquidacion l " +
+            "JOIN l.liquidacionLoteList ll " +
+            "WHERE ll.lotesId.id = :loteId " +
+            "ORDER BY l.createdAt DESC")
+    Optional<Liquidacion> findByLoteId(@Param("loteId") Integer loteId);
 }

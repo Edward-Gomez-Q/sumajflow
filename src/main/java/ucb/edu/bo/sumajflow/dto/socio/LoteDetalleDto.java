@@ -74,4 +74,6 @@ public class LoteDetalleDto {
     private LiquidacionTollResponseDto liquidacionToll;
     private List<DeduccionVentaDto> deduccionesVenta;
     private List<ConcentradoVendidoDto> concentradosVendidos;
+    //Obtener liquidacion de venta directa
+    private VentaLiquidacionDetalleDto liquidacionVentaDirecta;
 }

@@ -10,21 +10,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ucb.edu.bo.sumajflow.bl.AuditoriaBl;
-import ucb.edu.bo.sumajflow.bl.LiquidacionTollBl;
-import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
-import ucb.edu.bo.sumajflow.bl.NotificacionBl;
-import ucb.edu.bo.sumajflow.bl.ingenio.LiquidacionTollIngenioBl;
+import ucb.edu.bo.sumajflow.bl.*;
 import ucb.edu.bo.sumajflow.dto.ingenio.LiquidacionTollResponseDto;
 import ucb.edu.bo.sumajflow.dto.socio.*;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionDetalleDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -50,9 +44,11 @@ public class LotesSocioBl {
     private final ObjectMapper objectMapper;
     private final LiquidacionTollBl liquidacionTollBl;
     private final LotesWebSocketBl lotesWebSocketBl;
+    private final LiquidacionRepository liquidacionRepository;
 
     // Constantes de estados
     private static final String ESTADO_INICIAL = "Pendiente de aprobación cooperativa";
+    private final LiquidacionVentaBl liquidacionVentaBl;
 
     @Transactional(readOnly = true)
     public LotesPaginadosDto getLotesPaginados(Integer usuarioId, LoteFiltrosDto filtros) {
@@ -298,6 +294,30 @@ public class LotesSocioBl {
 
         dto.setCreatedAt(lote.getFechaCreacion());
         dto.setUpdatedAt(lote.getUpdatedAt());
+
+        // Si el lote es de tipo venta_directa, obtener liquidación de venta directa si es que existe
+        if ("Vendido a comercializadora".equals(lote.getEstado()) ||
+                "venta_directa".equals(lote.getTipoOperacion())) {
+
+            // Buscar liquidación asociada a este lote
+            Optional<Liquidacion> liquidacionOpt = liquidacionRepository.findByLote(lote);
+
+            if (liquidacionOpt.isPresent()) {
+                Liquidacion liquidacion = liquidacionOpt.get();
+
+                // Verificar que sea del tipo correcto (venta)
+                if (LiquidacionVentaBl.TIPOS_VENTA.contains(liquidacion.getTipoLiquidacion())) {
+                    VentaLiquidacionDetalleDto liquidacionVentaDirecta =
+                            liquidacionVentaBl.convertirADtoDetallado(liquidacion);
+                    dto.setLiquidacionVentaDirecta(liquidacionVentaDirecta);
+
+                    log.debug("Liquidación de venta encontrada para lote ID: {} - Liquidación ID: {}",
+                            lote.getId(), liquidacion.getId());
+                }
+            } else {
+                log.debug("No se encontró liquidación de venta para lote ID: {}", lote.getId());
+            }
+        }
 
         return dto;
     }
