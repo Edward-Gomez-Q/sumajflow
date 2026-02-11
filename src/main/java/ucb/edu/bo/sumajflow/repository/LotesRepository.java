@@ -15,18 +15,6 @@ import java.util.Optional;
 
 public interface LotesRepository extends JpaRepository<Lotes, Integer> {
 
-  List<Lotes> findByMinasId(Minas mina);
-
-  @Query("SELECT l FROM Lotes l WHERE l.id = :id AND l.estado != 'eliminado'")
-  Optional<Lotes> findByIdAndNotDeleted(@Param("id") Integer id);
-
-  @Query("SELECT COUNT(l) FROM Lotes l WHERE l.minasId = :mina AND l.estado NOT IN ('completado', 'rechazado', 'cancelado')")
-  long countLotesActivosByMina(@Param("mina") Minas mina);
-
-  @Query("SELECT CASE WHEN COUNT(l) > 0 THEN true ELSE false END FROM Lotes l WHERE l.minasId = :mina AND l.estado NOT IN ('completado', 'rechazado', 'cancelado')")
-  boolean existsLotesActivosByMina(@Param("mina") Minas mina);
-
-  List<Lotes> findByMinasIdIn(List<Minas> minas);
 
   // Query NATIVA con CAST() función
   @Query(value = "SELECT * FROM lotes " +
@@ -56,29 +44,22 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
           @Param("minaId") Integer minaId,
           Pageable pageable
   );
-  /**
-   * Verifica si existen lotes en proceso (no finalizados) para un ingenio específico
-   * Los estados finales son: 'Completado' y 'Rechazado'
-   */
+
   @Query(value = """
         SELECT COUNT(l.id) > 0
         FROM lotes l
         INNER JOIN lote_ingenio li ON l.id = li.lotes_id
         WHERE li.ingenio_minero_id = :ingenioId
-        AND l.estado NOT IN ('Completado', 'Rechazado')
+        AND l.estado NOT IN ('Procesado', 'Rechazado')
         """, nativeQuery = true)
   boolean existenLotesEnProcesoParaIngenio(@Param("ingenioId") Integer ingenioId);
 
-  /**
-   * Verifica si existen lotes en proceso (no finalizados) para una comercializadora específica
-   * Los estados finales son: 'Completado' y 'Rechazado'
-   */
   @Query(value = """
         SELECT COUNT(l.id) > 0
         FROM lotes l
         INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
         WHERE lc.comercializadora_id = :comercializadoraId
-        AND l.estado NOT IN ('Completado', 'Rechazado')
+        AND l.estado NOT IN ('Vendido a comercializadora', 'Rechazado')
         """, nativeQuery = true)
   boolean existenLotesEnProcesoParaComercializadora(@Param("comercializadoraId") Integer comercializadoraId);
 
@@ -90,7 +71,7 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
         FROM lotes l
         INNER JOIN lote_ingenio li ON l.id = li.lotes_id
         WHERE li.ingenio_minero_id = :ingenioId
-        AND l.estado NOT IN ('Completado', 'Rechazado')
+        AND l.estado NOT IN ('Procesado', 'Rechazado')
         ORDER BY l.fecha_creacion DESC
         """, nativeQuery = true)
   List<Lotes> obtenerLotesEnProcesoParaIngenio(@Param("ingenioId") Integer ingenioId);
@@ -103,7 +84,7 @@ public interface LotesRepository extends JpaRepository<Lotes, Integer> {
         FROM lotes l
         INNER JOIN lote_comercializadora lc ON l.id = lc.lotes_id
         WHERE lc.comercializadora_id = :comercializadoraId
-        AND l.estado NOT IN ('Completado', 'Rechazado')
+        AND l.estado NOT IN ('Vendido a comercializadora', 'Rechazado')
         ORDER BY l.fecha_creacion DESC
         """, nativeQuery = true)
   List<Lotes> obtenerLotesEnProcesoParaComercializadora(@Param("comercializadoraId") Integer comercializadoraId);

@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ucb.edu.bo.sumajflow.bl.LiquidacionVentaBl;
 import ucb.edu.bo.sumajflow.bl.LotesWebSocketBl;
 import ucb.edu.bo.sumajflow.bl.NotificacionBl;
 import ucb.edu.bo.sumajflow.bl.cooperativa.AuditoriaLotesBl;
@@ -18,6 +19,7 @@ import ucb.edu.bo.sumajflow.dto.socio.AsignacionCamionSimpleDto;
 import ucb.edu.bo.sumajflow.dto.socio.AuditoriaLoteDto;
 import ucb.edu.bo.sumajflow.dto.socio.LoteDetalleDto;
 import ucb.edu.bo.sumajflow.dto.socio.MineralInfoDto;
+import ucb.edu.bo.sumajflow.dto.venta.VentaLiquidacionDetalleDto;
 import ucb.edu.bo.sumajflow.entity.*;
 import ucb.edu.bo.sumajflow.repository.*;
 
@@ -49,6 +51,8 @@ public class LotesComercializadoraBl {
     private static final String ESTADO_PENDIENTE_DESTINO = "Pendiente de aprobación por Ingenio/Comercializadora";
     private static final String ESTADO_APROBADO = "Aprobado - Pendiente de iniciar";
     private static final String ESTADO_RECHAZADO = "Rechazado";
+    private final LiquidacionVentaBl liquidacionVentaBl;
+    private final LiquidacionRepository liquidacionRepository;
 
     /**
      * Obtener lotes con paginación y filtros
@@ -108,7 +112,7 @@ public class LotesComercializadoraBl {
     }
 
     /**
-     * Obtener detalle completo de un lote - AHORA USA LoteDetalleDto COMPARTIDO
+     * Obtener detalle completo de un lote
      */
     @Transactional(readOnly = true)
     public LoteDetalleDto getLoteDetalleCompleto(Integer loteId, Integer usuarioId) {
@@ -550,6 +554,14 @@ public class LotesComercializadoraBl {
 
         dto.setCreatedAt(lote.getFechaCreacion());
         dto.setUpdatedAt(lote.getUpdatedAt());
+
+        if("Vendido a comercializadora".equals(lote.getEstado())) {
+            Liquidacion liquidacion = liquidacionRepository.findByLote(lote).orElse(null);
+            if (liquidacion != null) {
+                VentaLiquidacionDetalleDto liquidacionDto = liquidacionVentaBl.convertirADtoDetallado(liquidacion);
+                dto.setLiquidacionVentaDirecta(liquidacionDto);
+            }
+        }
 
         return dto;
     }
