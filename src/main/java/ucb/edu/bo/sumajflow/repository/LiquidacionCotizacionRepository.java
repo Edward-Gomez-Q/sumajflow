@@ -8,4 +8,5 @@ import java.util.List;
 
 public interface LiquidacionCotizacionRepository extends JpaRepository<LiquidacionCotizacion, Integer> {
 
+    List<LiquidacionCotizacion> findByLiquidacionId(Liquidacion liquidacionId);
 }
