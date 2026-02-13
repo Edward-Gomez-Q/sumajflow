@@ -50,6 +50,8 @@ public class TransporteBl {
             Map.entry("En camino almacén destino", new EstadoTransicion("Descargando", "LLEGADA_ALMACEN")),
             Map.entry("Descargando", new EstadoTransicion("Completado", "FIN_DESCARGA"))
     );
+    private final LoteIngenioRepository loteIngenioRepository;
+    private final LoteComercializadoraRepository loteComercializadoraRepository;
 
     // Clase interna para transiciones
     private static class EstadoTransicion {
@@ -810,6 +812,30 @@ public class TransporteBl {
             String mensaje = String.format("%s ha iniciado el transporte del lote %s", nombreTransportista, lote.getId().toString());
 
             notificacionBl.crearNotificacion(socioUsuarioId, "info", titulo, mensaje, metadata);
+
+            // Notificar a la cooperativa que el camión está en camino a la mina
+            Integer cooperativaUsuarioId = lote.getMinasId().getSectoresId().getCooperativaId().getUsuariosId().getId();
+            String tituloCoop = String.format("Camión #%d en camino a la mina", asignacion.getNumeroCamion());
+            String mensajeCoop = String.format("El camión #%d ha iniciado su viaje hacia la mina para el lote %s", asignacion.getNumeroCamion(), lote.getId().toString());
+            notificacionBl.crearNotificacion(cooperativaUsuarioId, "info", tituloCoop, mensajeCoop, metadata);
+
+            //Notificar al destino (ingenio o comercializadora) que el camión está en camino
+            Integer destinoUsuarioId = null;
+
+            if("procesamiento_planta".equals(lote.getTipoOperacion())) {
+                LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote)
+                        .orElseThrow(() -> new IllegalArgumentException("Relación lote-ingenio no encontrada"));
+                destinoUsuarioId = loteIngenio.getIngenioMineroId().getUsuariosId().getId();
+
+            } else {
+                LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote)
+                        .orElseThrow(() -> new IllegalArgumentException("Relación lote-comercializadora no encontrada"));
+                destinoUsuarioId = loteComercializadora.getComercializadoraId().getUsuariosId().getId();
+            }
+            String tituloDestino = String.format("Camión #%d en camino al destino", asignacion.getNumeroCamion());
+            String mensajeDestino = String.format("El camión #%d ha iniciado su viaje hacia el destino para el lote %s", asignacion.getNumeroCamion(), lote.getId().toString());
+            notificacionBl.crearNotificacion(destinoUsuarioId, "info", tituloDestino, mensajeDestino, metadata);
+
         } catch (Exception e) {
             log.error("Error al enviar notificación: {}", e.getMessage());
         }
@@ -833,6 +859,28 @@ public class TransporteBl {
             String mensaje = String.format("El transporte del lote %s ha sido completado exitosamente", lote.getId().toString());
 
             notificacionBl.crearNotificacion(socioUsuarioId, "success", titulo, mensaje, metadata);
+
+            // Notificar a la cooperativa que el camión ha completado el viaje
+            Integer cooperativaUsuarioId = lote.getMinasId().getSectoresId().getCooperativaId().getUsuariosId().getId();
+            String tituloCoop = String.format("Camión #%d ha completado el viaje", asignacion.getNumeroCamion());
+            String mensajeCoop = String.format("El camión #%d ha completado su viaje para el lote %s", asignacion.getNumeroCamion(), lote.getId().toString());
+            notificacionBl.crearNotificacion(cooperativaUsuarioId, "success", tituloCoop, mensajeCoop, metadata);
+            //Notificar al destino (ingenio o comercializadora) que el camión ha completado el viaje
+            Integer destinoUsuarioId = null;
+            if("procesamiento_planta".equals(lote.getTipoOperacion())) {
+                LoteIngenio loteIngenio = loteIngenioRepository.findByLotesId(lote)
+                        .orElseThrow(() -> new IllegalArgumentException("Relación lote-ingenio no encontrada"));
+                destinoUsuarioId = loteIngenio.getIngenioMineroId().getUsuariosId().getId();
+
+            } else {
+                LoteComercializadora loteComercializadora = loteComercializadoraRepository.findByLotesId(lote)
+                        .orElseThrow(() -> new IllegalArgumentException("Relación lote-comercializadora no encontrada"));
+                destinoUsuarioId = loteComercializadora.getComercializadoraId().getUsuariosId().getId();
+            }
+            String tituloDestino = String.format("Camión #%d ha completado el viaje", asignacion.getNumeroCamion());
+            String mensajeDestino = String.format("El camión #%d ha completado su viaje para el lote %s", asignacion.getNumeroCamion(), lote.getId().toString());
+            notificacionBl.crearNotificacion(destinoUsuarioId, "success", tituloDestino, mensajeDestino, metadata);
+
         } catch (Exception e) {
             log.error("Error al enviar notificación: {}", e.getMessage());
         }

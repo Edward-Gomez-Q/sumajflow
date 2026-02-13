@@ -29,6 +29,7 @@ public class LotesWebSocketBl {
     private final SimpMessagingTemplate messagingTemplate;
     private final LoteIngenioRepository loteIngenioRepository;
     private final LoteComercializadoraRepository loteComercializadoraRepository;
+    private final NotificacionBl notificacionBl;
 
     // ==================== CREACIÓN DE LOTE ====================
 
@@ -59,12 +60,15 @@ public class LotesWebSocketBl {
                     .getId();
 
             enviarAUsuario(cooperativaUsuarioId, payloadLigero);
+            String tipoOperacion = "procesamiento_planta".equals(lote.getTipoOperacion()) ? "Procesamiento en Planta" : "Venta Directa";
+            notificacionBl.crearNotificacion(cooperativaUsuarioId, "info", "Nuevo lote creado: " + lote.getId(), "El socio ha creado un nuevo lote con ID " + lote.getId() + " y tipo de operación " + tipoOperacion, payloadLigero);
             log.debug("📤 Notificado cooperativa (usuario {}): lote_creado", cooperativaUsuarioId);
 
             // Notificar al destino (ingenio o comercializadora)
             Integer destinoUsuarioId = obtenerUsuarioIdDestino(lote);
             if (destinoUsuarioId != null) {
                 enviarAUsuario(destinoUsuarioId, payloadLigero);
+                notificacionBl.crearNotificacion(destinoUsuarioId, "info", "Nuevo lote creado: " + lote.getId(), "Se ha creado una solicitud de lote con destino al almacen, pendiente de aprobación" , payloadLigero);
                 log.debug("📤 Notificado destino (usuario {}): lote_creado", destinoUsuarioId);
             }
 

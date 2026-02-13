@@ -125,23 +125,17 @@ public class VentaSocioBl {
         metadata.put("mineral_principal", mineralPrincipal);
         metadata.put("cantidad_concentrados", concentrados.size());
         liquidacion.setServiciosAdicionales(liquidacionVentaBl.convertirAJson(metadata));
+        liquidacionVentaBl.agregarObservacion(
+                liquidacion,
+                "creado",
+                "Venta de concentrado creada",
+                createDto.getObservaciones() == null ? null : createDto.getObservaciones().trim(),
+                "socio",
+                "",
+                null
+        );
 
         liquidacion = liquidacionRepository.save(liquidacion);
-        if (createDto.getObservaciones() != null && !createDto.getObservaciones().isBlank()) {
-            liquidacionVentaBl.agregarObservacion(
-                    liquidacion,
-                    "pendiente_aprobacion",
-                    "Solicitud de venta de concentrado creada",
-                    createDto.getObservaciones(),
-                    "socio",
-                    null,
-                    Map.of(
-                            "cantidad_concentrados", concentrados.size(),
-                            "peso_total_tms", pesoTotalFinal
-                    )
-            );
-            liquidacionRepository.save(liquidacion);
-        }
 
         for (Concentrado concentrado : concentrados) {
             LiquidacionConcentrado lc = LiquidacionConcentrado.builder()
@@ -162,6 +156,7 @@ public class VentaSocioBl {
                         concentrados.size(), mineralPrincipal, pesoTotalFinal),
                 "info");
         liquidacionesWebSocketBl.publicarCreacionVenta(liquidacion);
+
 
         log.info("✅ Venta de concentrado creada - Liquidación ID: {}", liquidacion.getId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -226,23 +221,6 @@ public class VentaSocioBl {
 
         liquidacion = liquidacionRepository.save(liquidacion);
 
-        if (createDto.getObservaciones() != null && !createDto.getObservaciones().isBlank()) {
-            liquidacionVentaBl.agregarObservacion(
-                    liquidacion,
-                    "pendiente_aprobacion",
-                    "Solicitud de venta de lote complejo creada",
-                    createDto.getObservaciones(),
-                    "socio",
-                    null,
-                    Map.of(
-                            "cantidad_lotes", lotes.size(),
-                            "peso_total_kg", pesoTotal,
-                            "comercializadora", comercializadora.getRazonSocial()
-                    )
-            );
-            liquidacionRepository.save(liquidacion);
-        }
-
         for (Lotes lote : lotes) {
             LiquidacionLote ll = LiquidacionLote.builder()
                     .liquidacionId(liquidacion)
@@ -261,6 +239,15 @@ public class VentaSocioBl {
                 String.format("El socio solicita vender %d lote(s). Peso total: %.2f kg", lotes.size(), pesoTotal),
                 "info");
         liquidacionesWebSocketBl.publicarCreacionVenta(liquidacion);
+        liquidacionVentaBl.agregarObservacion(
+                liquidacion,
+                "creado",
+                "Venta de lote complejo creada",
+                createDto.getObservaciones() == null ? null : createDto.getObservaciones().trim(),
+                "socio",
+                "",
+                null
+        );
 
         log.info("✅ Venta de lote complejo creada - Liquidación ID: {}", liquidacion.getId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -371,6 +358,16 @@ public class VentaSocioBl {
                     "info");
         }
         liquidacionesWebSocketBl.publicarReporteQuimicoSubido(liquidacion, "socio");
+        liquidacionVentaBl.agregarObservacion(
+                liquidacion,
+                "reporte_subido_socio",
+                "El socio ha subido su reporte químico",
+                null,
+                "socio",
+                "",
+                null
+        );
+        liquidacionRepository.save(liquidacion);
 
         log.info("✅ Reporte químico del socio subido exitosamente - Liquidación ID: {}", uploadDto.getLiquidacionId());
         return liquidacionVentaBl.convertirADto(liquidacion);
@@ -684,18 +681,17 @@ public class VentaSocioBl {
 
         liquidacion.setEstado("cerrado");
 
-        if (cierreDto.getObservaciones() != null && !cierreDto.getObservaciones().isBlank()) {
 
                 liquidacionVentaBl.agregarObservacion(
                         liquidacion,
                         "cerrado",
                         "Venta cerrada por el socio",
-                        cierreDto.getObservaciones(),
+                        cierreDto.getObservaciones() == null ? null : cierreDto.getObservaciones().trim(),
                         "socio",
                         "esperando_cierre_venta",
                         null
                 );
-        }
+
 
         liquidacionRepository.save(liquidacion);
 
@@ -1073,12 +1069,11 @@ public class VentaSocioBl {
 
         liquidacion.setEstado("cerrado");
 
-        if (cierreDto.getObservaciones() != null && !cierreDto.getObservaciones().isBlank()) {
             liquidacionVentaBl.agregarObservacion(
                     liquidacion,
                     "cerrado",
                     "Venta cerrada por el socio",
-                    cierreDto.getObservaciones(),
+                    cierreDto.getObservaciones() == null ? null : cierreDto.getObservaciones().trim(),
                     "socio",
                     "esperando_cierre_venta",
                     Map.of(
@@ -1087,7 +1082,7 @@ public class VentaSocioBl {
                             "tipo_cambio", tipoCambio
                     )
             );
-        }
+
 
         liquidacionRepository.save(liquidacion);
         log.info("✅ Liquidación actualizada y guardada");

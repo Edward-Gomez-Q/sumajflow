@@ -361,6 +361,20 @@ public class LotesComercializadoraBl {
                 "El lote ID " + lote.getId() + " ha sido aprobado por " + nombreComercializadora,
                 metadata
         );
+
+        // Notificar al transportista
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        for (AsignacionCamion asignacion : asignaciones) {
+            Integer transportistaUsuarioId = asignacion.getTransportistaId().getUsuariosId().getId();
+
+            notificacionBl.crearNotificacion(
+                    transportistaUsuarioId,
+                    "info",
+                    "Lote aprobado por comercializadora",
+                    "El lote ID " + lote.getId() + " al que estás asignado ha sido aprobado por " + nombreComercializadora,
+                    metadata
+            );
+        }
     }
 
     private void notificarRechazo(Lotes lote, String nombreComercializadora, String motivo) {
@@ -392,6 +406,19 @@ public class LotesComercializadoraBl {
                 "El lote ID " + lote.getId() + " ha sido rechazado por " + nombreComercializadora,
                 metadata
         );
+        // Notificar al transportista
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        for (AsignacionCamion asignacion : asignaciones) {
+            Integer transportistaUsuarioId = asignacion.getTransportistaId().getUsuariosId().getId();
+
+            notificacionBl.crearNotificacion(
+                    transportistaUsuarioId,
+                    "warning",
+                    "Lote rechazado por comercializadora",
+                    "El lote ID " + lote.getId() + " al que estás asignado ha sido rechazado por " + nombreComercializadora + ". Motivo: " + motivo,
+                    metadata
+            );
+        }
     }
 
     // ==================== MÉTODOS AUXILIARES ====================

@@ -54,7 +54,6 @@ public class VentaComercializadoraBl {
             throw new IllegalArgumentException("Debe estar en estado 'pendiente_aprobacion'. Estado: " + liq.getEstado());
         }
 
-        // ✅ VALIDACIÓN NUEVA: Para lotes complejos, verificar tabla de precios
         if (LiquidacionVentaBl.TIPO_VENTA_LOTE_COMPLEJO.equals(liq.getTipoLiquidacion())) {
             ValidacionPreciosResponseDto validacion = tablaPreciosMineralBl.validarConfiguracion(com.getId());
 
@@ -210,6 +209,16 @@ public class VentaComercializadoraBl {
             liq.setEstado("esperando_reportes");
             liquidacionRepository.save(liq);
         }
+        liquidacionVentaBl.agregarObservacion(
+                liq,
+                "reporte_subido_comercializadora",
+                "La comercialziadora ha subido su reporte químico",
+                null,
+                "comercializadora",
+                "",
+                null
+        );
+        liquidacionRepository.save(liq);
 
         // Si el socio ya subió, procesar acuerdo
         if (yaSubioReporteSocio(liq)) {
@@ -275,12 +284,11 @@ public class VentaComercializadoraBl {
         liq.setMetodoPago(pagoDto.getMetodoPago());
         liq.setNumeroComprobante(pagoDto.getNumeroComprobante());
         liq.setUrlComprobante(pagoDto.getUrlComprobante());
-        if (pagoDto.getObservaciones() != null && !pagoDto.getObservaciones().isBlank()) {
             liquidacionVentaBl.agregarObservacion(
                     liq,
                     "pagado",
                     "Pago confirmado por comercializadora",
-                    pagoDto.getObservaciones(),
+                    pagoDto.getObservaciones() != null ? pagoDto.getObservaciones() : "Sin observaciones",
                     "comercializadora",
                     "cerrado",
                     Map.of(
@@ -289,7 +297,7 @@ public class VentaComercializadoraBl {
                             "monto_bob", liq.getValorNetoBob()
                     )
             );
-        }
+
         liquidacionRepository.save(liq);
         marcarItemsVendidos(liq);
 

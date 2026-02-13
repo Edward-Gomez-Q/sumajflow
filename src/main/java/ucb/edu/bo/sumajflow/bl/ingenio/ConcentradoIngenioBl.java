@@ -110,7 +110,7 @@ public class ConcentradoIngenioBl {
         dashboard.put("enProceso", todos.stream().filter(c -> "en_proceso".equals(c.getEstado())).count());
         dashboard.put("esperandoReporte", todos.stream().filter(c -> "esperando_reporte_quimico".equals(c.getEstado())).count());
         dashboard.put("listoLiquidacion", todos.stream().filter(c -> "listo_para_liquidacion".equals(c.getEstado())).count());
-        dashboard.put("vendidos", todos.stream().filter(c -> "vendido".equals(c.getEstado())).count());
+        dashboard.put("vendidoAComercializadora", todos.stream().filter(c -> "vendido_a_comercializadora".equals(c.getEstado())).count());
 
         BigDecimal pesoTotal = todos.stream()
                 .map(Concentrado::getPesoInicial)

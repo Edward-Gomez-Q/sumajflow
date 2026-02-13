@@ -358,6 +358,18 @@ public class LotesIngenioBl {
                 "El lote ID " + lote.getId() + " ha sido aprobado por " + nombreIngenio,
                 metadata
         );
+        //Notificar a los transportistas asignados
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        for (AsignacionCamion asignacion : asignaciones) {
+            Integer transportistaUsuarioId = asignacion.getTransportistaId().getUsuariosId().getId();
+            notificacionBl.crearNotificacion(
+                    transportistaUsuarioId,
+                    "info",
+                    "Lote aprobado por ingenio",
+                    "El lote ID " + lote.getId() + " al que estás asignado ha sido aprobado por " + nombreIngenio,
+                    metadata
+            );
+        }
     }
 
     private void notificarRechazo(Lotes lote, String nombreIngenio, String motivo) {
@@ -389,6 +401,18 @@ public class LotesIngenioBl {
                 "El lote ID " + lote.getId() + " ha sido rechazado por " + nombreIngenio,
                 metadata
         );
+        //Notificar a los transportistas asignados
+        List<AsignacionCamion> asignaciones = asignacionCamionRepository.findByLotesId(lote);
+        for (AsignacionCamion asignacion : asignaciones) {
+            Integer transportistaUsuarioId = asignacion.getTransportistaId().getUsuariosId().getId();
+            notificacionBl.crearNotificacion(
+                    transportistaUsuarioId,
+                    "warning",
+                    "Lote rechazado por ingenio",
+                    "El lote ID " + lote.getId() + " al que estás asignado ha sido rechazado por " + nombreIngenio + ". Motivo: " + motivo,
+                    metadata
+            );
+        }
     }
 
     // ==================== MÉTODOS AUXILIARES ====================
