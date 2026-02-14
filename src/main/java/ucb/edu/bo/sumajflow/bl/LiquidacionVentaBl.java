@@ -172,6 +172,67 @@ public class LiquidacionVentaBl {
         );
     }
 
+    public CalculoVentaResult calcularVentaConDeduccionesEspecificasComplejo(
+            BigDecimal valorBrutoPb,
+            BigDecimal valorBrutoZn,
+            BigDecimal valorBrutoAg,
+            List<DeduccionInput> deducciones,
+            BigDecimal tipoCambio
+    ) {
+        BigDecimal valorBrutoTotal = valorBrutoPb.add(valorBrutoZn).add(valorBrutoAg);
+
+        List<DeduccionResult> deduccionesResult = new ArrayList<>();
+        BigDecimal totalDeduccionesUsd = BigDecimal.ZERO;
+
+        for (DeduccionInput ded : deducciones) {
+            BigDecimal baseCalculo = switch (ded.baseCalculo()) {
+                case "valor_bruto_pb" -> valorBrutoPb;
+                case "valor_bruto_zn" -> valorBrutoZn;
+                case "valor_bruto_ag" -> valorBrutoAg;
+                case "valor_bruto_total" -> valorBrutoTotal;
+                default -> {
+                    log.warn("⚠️ Base de cálculo '{}' no reconocida, usando valor_bruto_total", ded.baseCalculo());
+                    yield valorBrutoTotal;
+                }
+            };
+
+            BigDecimal montoDeducido = baseCalculo
+                    .multiply(ded.porcentaje())
+                    .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+
+            BigDecimal montoDeducidoBob = montoDeducido
+                    .multiply(tipoCambio)
+                    .setScale(4, RoundingMode.HALF_UP);
+
+            deduccionesResult.add(new DeduccionResult(
+                    ded.concepto(),
+                    ded.porcentaje(),
+                    ded.tipoDeduccion(),
+                    montoDeducido,
+                    montoDeducidoBob,
+                    ded.descripcion(),
+                    ded.baseCalculo(),
+                    ded.orden()
+            ));
+
+            totalDeduccionesUsd = totalDeduccionesUsd.add(montoDeducido);
+        }
+
+        BigDecimal valorNetoUsd = valorBrutoTotal.subtract(totalDeduccionesUsd)
+                .setScale(4, RoundingMode.HALF_UP);
+        BigDecimal valorNetoBob = valorNetoUsd.multiply(tipoCambio)
+                .setScale(4, RoundingMode.HALF_UP);
+
+        return new CalculoVentaResult(
+                null, // precioAjustado - no aplica en lote complejo
+                valorBrutoTotal,
+                totalDeduccionesUsd,
+                valorNetoUsd,
+                valorNetoBob,
+                deduccionesResult
+        );
+    }
+
     // ==================== CÁLCULOS DE VENTA ====================
 
 
@@ -656,27 +717,31 @@ public class LiquidacionVentaBl {
 
         if (TIPO_VENTA_CONCENTRADO.equals(tipoVenta)) {
             // VENTA_CONCENTRADO
-            valoracion.setValoracionMineralPrincipal(construirValoracionMineral(
-                    mineralPrincipal,
-                    toBigDecimal(extras.get("ley_mineral_principal_promedio")),
-                    liquidacion.getCostoPorTonelada(),
-                    toBigDecimal(extras.get("valor_principal_usd_ton")),
-                    liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
-                            liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
-                    toBigDecimal(extras.get("valor_bruto_principal_usd"))
-            ));
+            if (extras.containsKey("valor_principal_usd_ton")) {
+                valoracion.setValoracionMineralPrincipal(construirValoracionMineral(
+                        mineralPrincipal,
+                        toBigDecimal(extras.get("ley_mineral_principal_promedio")),
+                        liquidacion.getCostoPorTonelada(),
+                        toBigDecimal(extras.get("valor_principal_usd_ton")),
+                        liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
+                                liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
+                        toBigDecimal(extras.get("valor_bruto_principal_usd"))
+                ));
+            }
 
-            valoracion.setValoracionPlata(construirValoracionPlata(
-                    toBigDecimal(extras.get("ley_ag_gmt")),
-                    "g/MT",
-                    toBigDecimal(extras.get("contenido_ag_oz_ton")),
-                    obtenerCotizacionAg(liquidacion),
-                    null,
-                    toBigDecimal(extras.get("valor_ag_usd_ton")),
-                    liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
-                            liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
-                    toBigDecimal(extras.get("valor_bruto_ag_usd"))
-            ));
+            if (extras.containsKey("valor_ag_usd_ton")) {
+                valoracion.setValoracionPlata(construirValoracionPlata(
+                        toBigDecimal(extras.get("ley_ag_gmt")),
+                        "g/MT",
+                        toBigDecimal(extras.get("contenido_ag_oz_ton")),
+                        obtenerCotizacionAg(liquidacion),
+                        null,
+                        toBigDecimal(extras.get("valor_ag_usd_ton")),
+                        liquidacion.getPesoFinalTms() != null ? liquidacion.getPesoFinalTms() :
+                                liquidacion.getPesoTms() != null ? liquidacion.getPesoTms() : liquidacion.getPesoTmh(),
+                        toBigDecimal(extras.get("valor_bruto_ag_usd"))
+                ));
+            }
 
             valoracion.setValorTotalUsdPorTon(toBigDecimal(extras.get("valor_total_usd_ton")));
 
@@ -684,65 +749,56 @@ public class LiquidacionVentaBl {
             // VENTA_LOTE_COMPLEJO
             BigDecimal pesoTon = liquidacion.getPesoTmh();
 
-            // Pb
-            if (extras.containsKey("ley_pb") && extras.containsKey("precio_por_ton_pb")) {
+            // ✅ Validar que existan los valores antes de construir la valoración
+            BigDecimal valorBrutoPb = toBigDecimal(extras.get("valor_bruto_pb"));
+            BigDecimal valorBrutoZn = toBigDecimal(extras.get("valor_bruto_zn"));
+            BigDecimal valorBrutoAg = toBigDecimal(extras.get("valor_bruto_ag"));
+
+            // ✅ Solo construir si los datos existen (liquidación cerrada)
+            if (valorBrutoPb != null && extras.containsKey("ley_pb") && extras.containsKey("precio_por_ton_pb")) {
                 valoracion.setValoracionPb(construirValoracionMineralLote(
                         "Pb",
                         toBigDecimal(extras.get("ley_pb")),
                         toBigDecimal(extras.get("precio_unitario_pb")),
                         toBigDecimal(extras.get("precio_por_ton_pb")),
                         pesoTon,
-                        toBigDecimal(extras.get("valor_bruto_pb"))
+                        valorBrutoPb
                 ));
             }
 
-            // Zn
-            if (extras.containsKey("ley_zn") && extras.containsKey("precio_por_ton_zn")) {
+            if (valorBrutoZn != null && extras.containsKey("ley_zn") && extras.containsKey("precio_por_ton_zn")) {
                 valoracion.setValoracionZn(construirValoracionMineralLote(
                         "Zn",
                         toBigDecimal(extras.get("ley_zn")),
                         toBigDecimal(extras.get("precio_unitario_zn")),
                         toBigDecimal(extras.get("precio_por_ton_zn")),
                         pesoTon,
-                        toBigDecimal(extras.get("valor_bruto_zn"))
+                        valorBrutoZn
                 ));
             }
 
-            // Ag
-            if (extras.containsKey("ley_ag_dm") && extras.containsKey("precio_por_ton_ag")) {
+            if (valorBrutoAg != null && extras.containsKey("ley_ag_dm") && extras.containsKey("precio_por_ton_ag")) {
                 valoracion.setValoracionAgDm(construirValoracionPlataLote(
                         toBigDecimal(extras.get("ley_ag_dm")),
                         toBigDecimal(extras.get("precio_unitario_ag")),
                         toBigDecimal(extras.get("precio_por_ton_ag")),
                         pesoTon,
-                        toBigDecimal(extras.get("valor_bruto_ag"))
+                        valorBrutoAg
                 ));
             }
 
-            // Sumar valores
-            BigDecimal valorTotal = BigDecimal.ZERO;
-            if (extras.containsKey("valor_bruto_pb")) {
-                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_pb")));
+            // ✅ Solo calcular valor total si existen los valores
+            if (valorBrutoPb != null && valorBrutoZn != null && valorBrutoAg != null && pesoTon != null && pesoTon.compareTo(BigDecimal.ZERO) > 0) {
+                valoracion.setValorTotalUsdPorTon(
+                        valorBrutoPb.add(valorBrutoZn).add(valorBrutoAg).divide(pesoTon, 4, RoundingMode.HALF_UP)
+                );
             }
-            if (extras.containsKey("valor_bruto_zn")) {
-                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_zn")));
-            }
-            if (extras.containsKey("valor_bruto_ag")) {
-                valorTotal = valorTotal.add(toBigDecimal(extras.get("valor_bruto_ag")));
-            }
-
-            valoracion.setValorTotalUsdPorTon(
-                    pesoTon != null && pesoTon.compareTo(BigDecimal.ZERO) > 0
-                            ? valorTotal.divide(pesoTon, 4, RoundingMode.HALF_UP)
-                            : BigDecimal.ZERO
-            );
         }
 
         valoracion.setValorBrutoTotalUsd(liquidacion.getValorBrutoUsd());
 
         return valoracion;
     }
-
     private VentaLiquidacionDetalleDto.ValoracionMineralDto construirValoracionMineral(
             String mineral,
             BigDecimal ley,
@@ -913,17 +969,53 @@ public class LiquidacionVentaBl {
     }
 
     private BigDecimal determinarMontoBase(Liquidacion liquidacion, String baseCalculo) {
-        if (baseCalculo == null) return liquidacion.getValorBrutoUsd();
+        if (baseCalculo == null) return liquidacion.getValorBrutoUsd() != null ? liquidacion.getValorBrutoUsd() : BigDecimal.ZERO;
 
         Map<String, Object> extras = parsearJson(liquidacion.getServiciosAdicionales());
 
         return switch (baseCalculo) {
-            case "valor_bruto_principal" -> toBigDecimal(extras.get("valor_bruto_principal_usd"));
-            case "valor_bruto_ag" -> toBigDecimal(extras.get("valor_bruto_ag_usd"));
-            default -> liquidacion.getValorBrutoUsd();
+            // ✅ Para concentrados
+            case "valor_bruto_principal" -> {
+                BigDecimal valor = toBigDecimal(extras.get("valor_bruto_principal_usd"));
+                yield valor != null ? valor : BigDecimal.ZERO;
+            }
+
+            // ✅ Para plata (funciona en AMBOS tipos)
+            case "valor_bruto_ag" -> {
+                // Primero intenta lote complejo
+                BigDecimal valorAg = toBigDecimal(extras.get("valor_bruto_ag"));
+                // Si no existe, intenta concentrado
+                if (valorAg == null || valorAg.compareTo(BigDecimal.ZERO) == 0) {
+                    valorAg = toBigDecimal(extras.get("valor_bruto_ag_usd"));
+                }
+                yield valorAg != null ? valorAg : BigDecimal.ZERO;
+            }
+
+            // ✅ Para lotes complejos
+            case "valor_bruto_pb" -> {
+                BigDecimal valor = toBigDecimal(extras.get("valor_bruto_pb"));
+                yield valor != null ? valor : BigDecimal.ZERO;
+            }
+
+            case "valor_bruto_zn" -> {
+                BigDecimal valor = toBigDecimal(extras.get("valor_bruto_zn"));
+                yield valor != null ? valor : BigDecimal.ZERO;
+            }
+
+            // ✅ Valor total
+            case "valor_bruto_total" -> {
+                BigDecimal valor = liquidacion.getValorBrutoUsd();
+                yield valor != null ? valor : BigDecimal.ZERO;
+            }
+
+            // ✅ Fallback
+            default -> {
+                log.warn("⚠️ Base de cálculo '{}' no reconocida, usando valor_bruto_total", baseCalculo);
+                BigDecimal valor = liquidacion.getValorBrutoUsd();
+                yield valor != null ? valor : BigDecimal.ZERO;
+            }
         };
     }
-
     private VentaLiquidacionDetalleDto.ResultadoFinalDto mapearResultadoFinal(Liquidacion liquidacion) {
         BigDecimal porcentajeDed = BigDecimal.ZERO;
         if (liquidacion.getValorBrutoUsd() != null && liquidacion.getValorBrutoUsd().compareTo(BigDecimal.ZERO) > 0) {

@@ -648,24 +648,36 @@ public class VentaSocioBl {
         // Determinar mineral principal (el de mayor valor bruto entre Pb y Zn)
         String mineralPrincipal = valorBrutoPb.compareTo(valorBrutoZn) >= 0 ? "Pb" : "Zn";
 
-        List<LiquidacionVentaBl.DeduccionInput> deduccionesInput = construirDeduccionesDesdeConfig(
-                deduccionesConfig, mineralPrincipal, valorBrutoPrincipal, valorBrutoAg);
+        List<LiquidacionVentaBl.DeduccionInput> deduccionesInput = construirDeduccionesDesdeConfigComplejo(
+                deduccionesConfig,
+                valorBrutoPb,
+                valorBrutoZn,
+                valorBrutoAg
+        );
 
-        LiquidacionVentaBl.CalculoVentaResult calculo = liquidacionVentaBl.calcularVentaConDeduccionesEspecificas(
-                valorBrutoPrincipal, valorBrutoAg, deduccionesInput, tipoCambio);
-
+        LiquidacionVentaBl.CalculoVentaResult calculo = liquidacionVentaBl.calcularVentaConDeduccionesEspecificasComplejo(
+                valorBrutoPb,
+                valorBrutoZn,
+                valorBrutoAg,
+                deduccionesInput,
+                tipoCambio
+        );
         log.info("✅ Deducciones: {} USD, Neto: {} USD ({} BOB)",
                 calculo.totalDeduccionesUsd(), calculo.valorNetoUsd(), calculo.valorNetoBob());
 
-        // ========== 7. ACTUALIZAR LIQUIDACIÓN ==========
+// ========== 7. ACTUALIZAR LIQUIDACIÓN ==========
         liquidacion.setValorBrutoUsd(calculo.valorBrutoUsd());
         liquidacion.setValorNetoUsd(calculo.valorNetoUsd());
         liquidacion.setTipoCambio(tipoCambio);
         liquidacion.setValorNetoBob(calculo.valorNetoBob());
         liquidacion.setTotalServiciosAdicionales(calculo.totalDeduccionesUsd());
 
-        // Guardar datos del cálculo en JSON
-        extras.put("mineral_principal", mineralPrincipal);
+// Guardar datos del cálculo en JSON (sin "mineral_principal" artificial)
+        extras.put("minerales_vendidos", Map.of(
+                "pb", Map.of("ley", leyPb, "valor_bruto_usd", valorBrutoPb),
+                "zn", Map.of("ley", leyZn, "valor_bruto_usd", valorBrutoZn),
+                "ag", Map.of("ley", leyAgDm, "valor_bruto_usd", valorBrutoAg)
+        ));
         extras.put("precio_unitario_pb", precioUnitarioPb);
         extras.put("precio_unitario_zn", precioUnitarioZn);
         extras.put("precio_unitario_ag", precioUnitarioAg);
@@ -1247,6 +1259,115 @@ public class VentaSocioBl {
         return deducciones;
     }
 
+    /**
+     * Construir deducciones para lote complejo.
+     * En lote complejo NO hay mineral principal único, se calculan regalías por cada mineral (Pb, Zn, Ag).
+     */
+    private List<DeduccionInput> construirDeduccionesDesdeConfigComplejo(
+            List<DeduccionConfiguracion> configs,
+            BigDecimal valorBrutoPb,
+            BigDecimal valorBrutoZn,
+            BigDecimal valorBrutoAg
+    ) {
+        log.info("   Construyendo deducciones para lote complejo (Pb, Zn, Ag)");
+
+        List<DeduccionInput> deducciones = new ArrayList<>();
+
+        for (DeduccionConfiguracion config : configs) {
+            String aplicaA = config.getAplicaAMineral();
+
+            log.debug("   Evaluando deducción: {} (aplica a: {})",
+                    config.getConcepto(), aplicaA != null ? aplicaA : "todos");
+
+            // ========== FILTRADO POR MINERAL ==========
+            if (aplicaA != null && !"todos".equalsIgnoreCase(aplicaA)) {
+
+                // Regalía específica de Pb
+                if ("Pb".equalsIgnoreCase(aplicaA)) {
+                    if (valorBrutoPb.compareTo(BigDecimal.ZERO) > 0) {
+                        deducciones.add(new DeduccionInput(
+                                config.getConcepto(),
+                                config.getPorcentaje(),
+                                config.getTipoDeduccion(),
+                                config.getDescripcion(),
+                                "valor_bruto_pb", // ✅ Base específica
+                                config.getOrden()
+                        ));
+                        log.info("   ✓ Aplicando: {} sobre Pb (valor: {} USD)",
+                                config.getConcepto(), valorBrutoPb);
+                    } else {
+                        log.debug("   ✗ Omitiendo: {} (sin valor de Pb)", config.getConcepto());
+                    }
+                    continue;
+                }
+
+                // Regalía específica de Zn
+                if ("Zn".equalsIgnoreCase(aplicaA)) {
+                    if (valorBrutoZn.compareTo(BigDecimal.ZERO) > 0) {
+                        deducciones.add(new DeduccionInput(
+                                config.getConcepto(),
+                                config.getPorcentaje(),
+                                config.getTipoDeduccion(),
+                                config.getDescripcion(),
+                                "valor_bruto_zn", // ✅ Base específica
+                                config.getOrden()
+                        ));
+                        log.info("   ✓ Aplicando: {} sobre Zn (valor: {} USD)",
+                                config.getConcepto(), valorBrutoZn);
+                    } else {
+                        log.debug("   ✗ Omitiendo: {} (sin valor de Zn)", config.getConcepto());
+                    }
+                    continue;
+                }
+
+                // Regalía específica de Ag
+                if ("Ag".equalsIgnoreCase(aplicaA)) {
+                    if (valorBrutoAg.compareTo(BigDecimal.ZERO) > 0) {
+                        deducciones.add(new DeduccionInput(
+                                config.getConcepto(),
+                                config.getPorcentaje(),
+                                config.getTipoDeduccion(),
+                                config.getDescripcion(),
+                                "valor_bruto_ag", // ✅ Base ya existente
+                                config.getOrden()
+                        ));
+                        log.info("   ✓ Aplicando: {} sobre Ag (valor: {} USD)",
+                                config.getConcepto(), valorBrutoAg);
+                    } else {
+                        log.debug("   ✗ Omitiendo: {} (sin valor de Ag)", config.getConcepto());
+                    }
+                    continue;
+                }
+            }
+
+            // ========== DEDUCCIONES GENERALES (aplican a todos) ==========
+            // Ej: transporte, maquila, etc.
+            BigDecimal baseValor = valorBrutoPb.add(valorBrutoZn).add(valorBrutoAg); // Total
+
+            // Si tiene base de cálculo específica, usarla
+            if (config.getBaseCalculo() != null) {
+                baseValor = switch (config.getBaseCalculo()) {
+                    case "valor_bruto_pb" -> valorBrutoPb;
+                    case "valor_bruto_zn" -> valorBrutoZn;
+                    case "valor_bruto_ag" -> valorBrutoAg;
+                    default -> baseValor; // valor_bruto_total
+                };
+            }
+
+            deducciones.add(new DeduccionInput(
+                    config.getConcepto(),
+                    config.getPorcentaje(),
+                    config.getTipoDeduccion(),
+                    config.getDescripcion(),
+                    config.getBaseCalculo() != null ? config.getBaseCalculo() : "valor_bruto_total",
+                    config.getOrden()
+            ));
+            log.info("   ✓ Aplicando: {} (aplica a todos)", config.getConcepto());
+        }
+
+        log.info("   Total deducciones construidas: {}", deducciones.size());
+        return deducciones;
+    }
     // ==================== 4. LISTAR Y CONSULTAR ====================
 
     @Transactional(readOnly = true)
