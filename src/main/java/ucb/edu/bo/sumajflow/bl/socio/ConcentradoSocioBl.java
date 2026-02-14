@@ -93,8 +93,12 @@ public class ConcentradoSocioBl {
         Concentrado concentrado = obtenerConcentradoConPermisos(concentradoId, socio);
         ConcentradoResponseDto responseDto = concentradoBl.convertirAResponseDto(concentrado);
         if ("vendido_a_comercializadora".equals(concentrado.getEstado())) {
-            Liquidacion liquidacion = liquidacionRepository.findByConcentradoId(concentrado).orElse(null);
-            if (liquidacion != null) {
+            List<Liquidacion> liquidaciones = liquidacionRepository.findByConcentradoId(concentrado).orElseThrow(() -> new IllegalArgumentException("No se encontró la liquidación para este concentrado"));
+            if (!liquidaciones.isEmpty()) {
+                Liquidacion liquidacion = liquidaciones.stream()
+                        .filter(l -> !"rechazado".equals(l.getEstado()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException("No se encontró una liquidación válida para este concentrado"));
                 VentaLiquidacionResponseDto dtoVenta = liquidacionVentaBl.convertirADto(liquidacion);
                 responseDto.setLiquidacionesVenta(Collections.singletonList(dtoVenta));
             }

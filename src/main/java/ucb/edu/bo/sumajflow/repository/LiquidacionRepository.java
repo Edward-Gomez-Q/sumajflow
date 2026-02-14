@@ -47,7 +47,7 @@ public interface LiquidacionRepository extends JpaRepository<Liquidacion, Intege
             "JOIN l.liquidacionConcentradoList lc " +
             "WHERE lc.concentradoId = :concentrado " +
             "ORDER BY l.createdAt DESC")
-    Optional<Liquidacion> findByConcentradoId(@Param("concentrado") Concentrado concentrado);
+    Optional<List<Liquidacion>> findByConcentradoId(@Param("concentrado") Concentrado concentrado);
 
     List<Liquidacion> findByComercializadoraIdAndEstadoAndTipoLiquidacion(Comercializadora comercializadoraId, String estado, String tipoLiquidacion);
 }

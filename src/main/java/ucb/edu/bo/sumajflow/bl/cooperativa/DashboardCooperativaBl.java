@@ -618,12 +618,12 @@ public class DashboardCooperativaBl {
                     .findByFechaRegistroBetween(inicioDia, finDia);
 
             long aprobados = auditoriasDia.stream()
-                    .filter(a -> "lote_aprobado_cooperativa".equals(a.getAccion()))
+                    .filter(a -> "APROBAR_COOPERATIVA".equals(a.getAccion()))
                     .filter(a -> perteneceLoteACooperativa(a.getLoteId(), cooperativa))
                     .count();
 
             long rechazados = auditoriasDia.stream()
-                    .filter(a -> "lote_rechazado_cooperativa".equals(a.getAccion()))
+                    .filter(a -> "RECHAZAR_COOPERATIVA".equals(a.getAccion()))
                     .filter(a -> perteneceLoteACooperativa(a.getLoteId(), cooperativa))
                     .count();
 

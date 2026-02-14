@@ -732,7 +732,7 @@ public class DashboardIngenioBl {
                     .filter(c -> c.getUpdatedAt() != null &&
                             !c.getUpdatedAt().isBefore(inicioDia) &&
                             c.getUpdatedAt().isBefore(finDia))
-                    .filter(c -> Arrays.asList("listo_para_liquidacion", "esperando_pago", "listo_para_venta")
+                    .filter(c -> Arrays.asList("vendido_a_comercializadora", "esperando_pago", "en_venta")
                             .contains(c.getEstado()))
                     .count();
 

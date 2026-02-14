@@ -762,12 +762,39 @@ public class DashboardComercializadoraBl {
                     .toList();
 
             int cantidadLiquidaciones = liquidacionesMes.size();
+            List<Liquidacion> liquidacionesMesComplejo = liquidacionRepository
+                    .findByComercializadoraId(comercializadora).stream()
+                    .filter(liq -> Objects.equals("venta_lote_complejo", liq.getTipoLiquidacion()))
+                    .filter(liq -> "pagado".equals(liq.getEstado()))
+                    .filter(liq -> liq.getFechaPago() != null)
+                    .filter(liq -> {
+                        LocalDate fechaPago = liq.getFechaPago().toLocalDate();
+                        return !fechaPago.isBefore(inicio) && !fechaPago.isAfter(fin);
+                    })
+                    .toList();
+            List<Liquidacion> liquidacionesMesConcentrado = liquidacionRepository
+                    .findByComercializadoraId(comercializadora).stream()
+                    .filter(liq -> Objects.equals("venta_concentrado", liq.getTipoLiquidacion()))
+                    .filter(liq -> "pagado".equals(liq.getEstado()))
+                    .filter(liq -> liq.getFechaPago() != null)
+                    .filter(liq -> {
+                        LocalDate fechaPago = liq.getFechaPago().toLocalDate();
+                        return !fechaPago.isBefore(inicio) && !fechaPago.isAfter(fin);
+                    })
+                    .toList();
 
-            BigDecimal pesoTotal = liquidacionesMes.stream()
+            BigDecimal pesoLoteComplejo = liquidacionesMesComplejo.stream()
+                    .flatMap(liq -> liquidacionConcentradoRepository.findByLiquidacionId(liq).stream())
+                    .map(lc -> lc.getConcentradoId() != null ? lc.getConcentradoId().getPesoTmh() : null)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal pesoConcentrado = liquidacionesMesConcentrado.stream()
                     .flatMap(liq -> liquidacionConcentradoRepository.findByLiquidacionId(liq).stream())
                     .map(lc -> lc.getConcentradoId() != null ? lc.getConcentradoId().getPesoFinal() : null)
                     .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal pesoTotal = pesoLoteComplejo.add(pesoConcentrado);
 
             BigDecimal inversionTotal = liquidacionesMes.stream()
                     .map(Liquidacion::getValorNetoBob)
